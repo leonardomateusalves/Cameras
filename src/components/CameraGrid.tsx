@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { CameraStream } from '../types';
 import { CameraCard } from './CameraCard';
 import { GlassCard } from './GlassCard';
-import { PlusCircle, ShieldCheck, AlertTriangle, RefreshCw } from 'lucide-react';
+import { PlusCircle, ShieldCheck, AlertTriangle, RefreshCw, Globe, Settings2 } from 'lucide-react';
+import { getAgentBaseUrl, setManualAgentUrl } from '../api/cameras';
 
 interface CameraGridProps {
   cameras: CameraStream[];
@@ -30,9 +32,17 @@ export function CameraGrid({
   onEdit,
   onOpenAddModal
 }: CameraGridProps) {
+  const [manualUrl, setManualUrl] = useState(getAgentBaseUrl() || '127.0.0.1:8080');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   const displayedCameras = focusedCameraId
     ? cameras.filter((c) => c.id === focusedCameraId)
     : cameras;
+
+  const handleUpdateUrl = () => {
+    setManualAgentUrl(manualUrl);
+    if (onRetryConnection) onRetryConnection();
+  };
 
   // Estado: Agente Windows Desconectado
   if (agentOffline) {
@@ -49,15 +59,50 @@ export function CameraGrid({
           <p className="text-sm text-zinc-300 font-sans mb-6 leading-relaxed text-center max-w-sm mx-auto">
             {agentError || 'Para descobrir e acessar câmeras da rede local, instale e execute o aplicativo Windows.'}
           </p>
-          {onRetryConnection && (
-            <button
-              onClick={onRetryConnection}
-              className="cftv-btn-prismatic mx-auto"
-            >
-              <RefreshCw className="w-5 h-5" />
-              <span>Verificar Conexão</span>
-            </button>
-          )}
+          
+          <div className="w-full space-y-4">
+            <div className="flex flex-col gap-2">
+              <button 
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="text-[10px] text-zinc-500 hover:text-cyan-400 flex items-center gap-1 mx-auto transition-colors font-mono uppercase tracking-widest"
+              >
+                <Settings2 className="w-3 h-3" />
+                {showAdvanced ? 'Ocultar Configurações Avançadas' : 'Configurar IP do Agente Manualmente'}
+              </button>
+
+              {showAdvanced && (
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="relative flex-1">
+                    <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                    <input 
+                      type="text"
+                      value={manualUrl}
+                      onChange={(e) => setManualUrl(e.target.value)}
+                      placeholder="IP:Porta (Ex: 127.0.0.1:8080)"
+                      className="w-full bg-black/60 border border-zinc-800 rounded px-9 py-2 text-sm text-cyan-300 font-mono focus:border-cyan-500/50 outline-none"
+                    />
+                  </div>
+                  <button 
+                    onClick={handleUpdateUrl}
+                    className="p-2 bg-cyan-600/20 hover:bg-cyan-600/40 border border-cyan-500/30 rounded text-cyan-400 transition-all"
+                    title="Aplicar URL"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {onRetryConnection && (
+              <button
+                onClick={onRetryConnection}
+                className="cftv-btn-prismatic mx-auto w-full"
+              >
+                <RefreshCw className="w-5 h-5" />
+                <span>Verificar Conexão</span>
+              </button>
+            )}
+          </div>
         </GlassCard>
       </main>
     );

@@ -73,9 +73,14 @@ export default function App() {
     function connect() {
       const agentBase = getAgentBaseUrl();
       let wsUrl = '';
-      if (window.electronAPI || agentBase.includes('127.0.0.1') || agentBase.includes('localhost')) {
+      
+      if (agentBase && agentBase.startsWith('http')) {
+        // Converte http://... para ws://... ou https:// para wss://
+        wsUrl = agentBase.replace(/^http/, 'ws') + '/ws';
+      } else if (window.electronAPI) {
         wsUrl = 'ws://127.0.0.1:8080/ws';
       } else {
+        // Fallback para o próprio servidor que serve o frontend
         wsUrl = `${wsProto}//${window.location.host}/ws`;
       }
 

@@ -18,7 +18,25 @@ declare global {
 }
 
 // Global detection state for the physical Local Agent running on Windows (port 8080)
-let detectedAgentBase = '';
+let detectedAgentBase = localStorage.getItem('detected_agent_base') || '';
+
+export function setManualAgentUrl(url: string) {
+  if (!url) {
+    detectedAgentBase = '';
+    localStorage.removeItem('detected_agent_base');
+    return;
+  }
+  
+  let formattedUrl = url.trim();
+  if (!formattedUrl.startsWith('http')) {
+    formattedUrl = `http://${formattedUrl}`;
+  }
+  // Remove trailing slash
+  formattedUrl = formattedUrl.replace(/\/$/, '');
+  
+  detectedAgentBase = formattedUrl;
+  localStorage.setItem('detected_agent_base', formattedUrl);
+}
 
 export function getAgentBaseUrl() {
   if (window.electronAPI) {
@@ -27,16 +45,14 @@ export function getAgentBaseUrl() {
   if (detectedAgentBase) {
     return detectedAgentBase;
   }
-  const savedBase = localStorage.getItem('detected_agent_base');
-  if (savedBase) {
-    detectedAgentBase = savedBase;
-    return savedBase;
-  }
   return '';
 }
 
 // Central API Base path using the detected Local Agent Base URL (e.g. http://127.0.0.1:8080/api/cameras)
-const getApiBase = () => `${getAgentBaseUrl()}/api/cameras`;
+const getApiBase = () => {
+  const base = getAgentBaseUrl();
+  return base ? `${base}/api/cameras` : '/api/cameras';
+};
 
 export interface HealthStatus {
   online: boolean;
@@ -44,6 +60,7 @@ export interface HealthStatus {
   go2rtcOnline?: boolean;
   camerasCount?: number;
   error?: string;
+  detectedUrl?: string;
 }
 
 /**
@@ -51,6 +68,7 @@ export interface HealthStatus {
  */
 export async function checkHealth(): Promise<HealthStatus> {
   const correlationId = 'HEALTH-CHK';
+  
   if (window.electronAPI?.getGo2RtcStatus) {
     logger.info('IPC', 'Invocando getGo2RtcStatus no processo principal', correlationId);
     try {
@@ -63,60 +81,72 @@ export async function checkHealth(): Promise<HealthStatus> {
     }
   }
 
-  // Se estiver rodando no navegador convencional (Web Cloud), tenta descobrir ativamente o Agente do Windows no 127.0.0.1:8080
+  // Lista de URLs para tentar auto-descoberta
+  const searchUrls = [
+    detectedAgentBase,
+    'http://127.0.0.1:8080',
+    'http://localhost:8080',
+    'http://127.0.0.1:3000',
+    'http://localhost:3000'
+  ].filter(Boolean) as string[];
+
+  // Tenta cada URL em sequência
+  for (const baseUrl of [...new Set(searchUrls)]) {
+    try {
+      logger.info('API', `Tentando detectar Agente Local em: ${baseUrl}`, correlationId);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+      const localRes = await fetch(`${baseUrl}/api/health`, {
+        method: 'GET',
+        mode: 'cors',
+        headers: { 'Access-Control-Request-Private-Network': 'true' } as any,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+
+      if (localRes.ok) {
+        const data = await localRes.json();
+        if (data.status === 'ok') {
+          detectedAgentBase = baseUrl;
+          localStorage.setItem('detected_agent_base', baseUrl);
+          logger.info('API', `Agente Local detectado e ativo em: ${baseUrl}`, correlationId);
+          return {
+            online: true,
+            service: 'local-agent-cors',
+            go2rtcOnline: true,
+            camerasCount: 0,
+            detectedUrl: baseUrl
+          };
+        }
+      }
+    } catch (err) {
+      // Ignora falha e tenta próxima URL
+    }
+  }
+
+  // Fallback final: tenta a rota relativa se nada mais funcionou
   try {
-    const localRes = await fetch('http://127.0.0.1:8080/api/health', {
-      method: 'GET',
-      mode: 'cors',
-      headers: { 'Access-Control-Request-Private-Network': 'true' } as any
-    });
-    if (localRes.ok) {
-      const data = await localRes.json();
+    const url = '/api/health';
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
       if (data.status === 'ok') {
-        detectedAgentBase = 'http://127.0.0.1:8080';
-        localStorage.setItem('detected_agent_base', 'http://127.0.0.1:8080');
         return {
           online: true,
-          service: 'local-agent-cors',
+          service: 'web-backend',
           go2rtcOnline: true,
           camerasCount: 0
         };
       }
     }
-  } catch (err) {
-    // Silencioso: se falhar o localhost, limpa o estado de detecção e tenta a rota relativa padrão
-    detectedAgentBase = '';
-    localStorage.removeItem('detected_agent_base');
-  }
+  } catch (err) {}
 
-  // Fallback padrão relativo
-  try {
-    const url = `${getAgentBaseUrl()}/api/health`;
-    logger.info('API', `GET ${url}`, correlationId);
-    const res = await fetch(url);
-    logger.info('API', `GET ${url} - Status: ${res.status}`, correlationId);
-    if (!res.ok) {
-      logger.error('API', `Request falhou com status ${res.status}`, null, correlationId);
-      return {
-        online: false,
-        error: 'Windows Local Agent não conectado.'
-      };
-    }
-    const data = await res.json();
-    return {
-      online: data.status === 'ok',
-      service: 'web-backend',
-      go2rtcOnline: true,
-      camerasCount: 0
-    };
-  } catch (err: any) {
-    logger.error('API', 'Request to GET /api/health failed with "Failed to fetch"', err, correlationId);
-    logger.warn('API', 'Possíveis causas: Backend offline, conexão recusada, timeout do agente ou bloqueio de CORS.', correlationId);
-    return {
-      online: false,
-      error: 'Windows Local Agent não conectado.'
-    };
-  }
+  return {
+    online: false,
+    error: 'Windows Local Agent não detectado nas portas padrão (8080/3000).'
+  };
 }
 
 export async function discoverCameras() {
