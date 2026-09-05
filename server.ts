@@ -3,7 +3,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 
 // Express app instance containing all ONVIF, RTSP & Camera REST API endpoints
-const { app, registerAllStreamsWithGo2Rtc } = require('./backend/app');
+const { app, registerAllStreamsWithGo2Rtc, initWebSocket } = require('./backend/app');
 
 const PORT = 3000;
 
@@ -27,10 +27,14 @@ async function startFullstackServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 [NEXUS CFTV FULLSTACK] Servidor ativo em http://0.0.0.0:${PORT}`);
     setTimeout(registerAllStreamsWithGo2Rtc, 2000);
   });
+
+  if (initWebSocket) {
+    initWebSocket(server);
+  }
 }
 
 startFullstackServer();

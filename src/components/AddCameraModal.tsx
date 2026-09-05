@@ -3,12 +3,27 @@ import { X, Radio, Search, ShieldCheck, Wifi, RefreshCw } from 'lucide-react';
 import { CameraStream } from '../types';
 import { GlassCard } from './GlassCard';
 import { CustomSelect } from './CustomSelect';
-import { discoverCameras, testCamera, addCamera } from '../api/cameras';
+import { discoverCameras, discoverCamerasFull, testCamera, addCamera } from '../api/cameras';
+import { DiagnosticViewer } from './DiagnosticViewer';
+
+interface LogEntry {
+  timestamp: string;
+  prefix: string;
+  message: string;
+}
 
 interface AddCameraModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (newCam: CameraStream) => void;
+  bootState: {
+    agentStatus: string;
+    networkStatus: string;
+    discoveryStatus: string;
+    devicesCount: number;
+    logs: LogEntry[];
+  };
+  onResetDiagnostic: () => void;
 }
 
 interface DiscoveredDevice {
@@ -21,7 +36,7 @@ interface DiscoveredDevice {
   ptz: boolean;
 }
 
-export function AddCameraModal({ isOpen, onClose, onAdd }: AddCameraModalProps) {
+export function AddCameraModal({ isOpen, onClose, onAdd, bootState, onResetDiagnostic }: AddCameraModalProps) {
   const [activeTab, setActiveTab] = useState<'scan' | 'manual'>('scan');
   const [isScanning, setIsScanning] = useState(false);
   const [discoveredList, setDiscoveredList] = useState<DiscoveredDevice[]>([]);
@@ -45,7 +60,14 @@ export function AddCameraModal({ isOpen, onClose, onAdd }: AddCameraModalProps) 
     setDiscoveredList([]);
     setErrorMsg('');
 
+    // 1. Redefinir status no frontend instantaneamente para os indicados pelo usuario
+    onResetDiagnostic();
+
     try {
+      // 2. Disparar a varredura profunda no backend (roda em background alimentando o WebSocket)
+      await discoverCamerasFull();
+      
+      // 3. Executa a varredura de busca para obter a lista final de dispositivos descobertos
       const result = await discoverCameras();
       if (result.success) {
         setDiscoveredList(result.devices);
@@ -198,12 +220,12 @@ export function AddCameraModal({ isOpen, onClose, onAdd }: AddCameraModalProps) 
                 </div>
 
                 {isScanning && (
-                  <div className="py-12 flex flex-col items-center justify-center gap-3 bg-black/30 border border-cyan-500/20">
-                    <div className="w-8 h-8 border-2 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin" />
-                    <span className="font-rajdhani font-bold text-xs text-cyan-400 tracking-widest uppercase">
-                      VARRENDO SUBNET 192.168.1.0/24 (ONVIF & RTSP)...
-                    </span>
-                  </div>
+                  <DiagnosticViewer
+                    agentStatus={bootState.agentStatus}
+                    networkStatus={bootState.networkStatus}
+                    discoveryStatus={bootState.discoveryStatus}
+                    logs={bootState.logs}
+                  />
                 )}
 
                 {!isScanning && scanCompleted && discoveredList.length === 0 && (

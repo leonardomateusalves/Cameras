@@ -162,11 +162,16 @@ function startGo2Rtc() {
 // Start Embedded Local Express Backend
 function startLocalBackend() {
   try {
-    const { app: expressApp, registerAllStreamsWithGo2Rtc } = require('./backend/app');
+    const { app: expressApp, registerAllStreamsWithGo2Rtc, startAutomaticDiscoverySequence, initWebSocket } = require('./backend/app');
     expressServer = expressApp.listen(BACKEND_PORT, '127.0.0.1', () => {
       console.log(`[Electron Main] Agente Local Express rodando em http://127.0.0.1:${BACKEND_PORT}`);
       setTimeout(registerAllStreamsWithGo2Rtc, 1500);
+      setTimeout(startAutomaticDiscoverySequence, 2000);
     });
+
+    if (initWebSocket) {
+      initWebSocket(expressServer);
+    }
 
     expressServer.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
@@ -230,6 +235,49 @@ function createWindow() {
 
 // Setup IPC Handlers
 function setupIpcHandlers() {
+  ipcMain.handle('send-webrtc-sdp', async (event, { streamId, sdp }) => {
+    return new Promise((resolve) => {
+      const url = new URL('/api/webrtc', BACKEND_URL);
+      url.searchParams.set('src', streamId);
+
+      const postData = sdp || '';
+      const options = {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname + url.search,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/sdp',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      };
+
+      const req = http.request(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve({ success: true, sdp: data, status: res.statusCode });
+          } else {
+            resolve({ success: false, error: `Go2RTC/Backend respondeu com status HTTP ${res.statusCode}: ${data}` });
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        resolve({ success: false, error: `Agente local/Go2RTC indisponível: ${err.message}` });
+      });
+
+      req.setTimeout(6000, () => {
+        req.destroy();
+        resolve({ success: false, error: 'Timeout de sinalização SDP com Go2RTC' });
+      });
+
+      req.write(postData);
+      req.end();
+    });
+  });
+
   ipcMain.handle('get-go2rtc-status', async () => {
     return new Promise((resolve) => {
       const req = http.get('http://127.0.0.1:1984/api', (res) => {
@@ -261,6 +309,10 @@ function setupIpcHandlers() {
 
   ipcMain.handle('remove-camera', async (event, id) => {
     return makeBackendRequest('DELETE', `/api/cameras/${encodeURIComponent(id)}`);
+  });
+
+  ipcMain.handle('get-discovery-status', async () => {
+    return makeBackendRequest('GET', '/api/discovery-status');
   });
 }
 

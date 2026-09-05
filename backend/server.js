@@ -1,4 +1,4 @@
-const { app, registerAllStreamsWithGo2Rtc } = require('./app');
+const { app, registerAllStreamsWithGo2Rtc, initWebSocket } = require('./app');
 
 const PORT = process.env.PORT || process.env.LOCAL_AGENT_PORT || 8080;
 const HOST = process.env.LOCAL_AGENT_HOST || '127.0.0.1';
@@ -7,6 +7,10 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`🚀 [NEXUS LOCAL AGENT] Servidor rodando em http://${HOST}:${PORT}`);
   setTimeout(registerAllStreamsWithGo2Rtc, 1500);
 });
+
+if (initWebSocket) {
+  initWebSocket(server);
+}
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {

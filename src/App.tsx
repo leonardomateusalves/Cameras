@@ -1,11 +1,18 @@
 import { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { CameraStream } from './types';
-import { fetchCameras, checkHealth } from './api/cameras';
+import { fetchCameras, checkHealth, getDiscoveryStatus } from './api/cameras';
 import { ParticleCanvas } from './components/ParticleCanvas/ParticleCanvas';
 import { CameraGrid } from './components/CameraGrid';
 import { AddCameraModal } from './components/AddCameraModal';
 import { PtzModal } from './components/PtzModal';
+import { logger } from './utils/logger';
+
+interface LogEntry {
+  timestamp: string;
+  prefix: string;
+  message: string;
+}
 
 export default function App() {
   const [cameras, setCameras] = useState<CameraStream[]>([]);
@@ -17,14 +24,22 @@ export default function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedPtzCam, setSelectedPtzCam] = useState<CameraStream | null>(null);
 
+  // Auto-Discovery and network state
+  const [bootState, setBootState] = useState({
+    agentStatus: '🟡 INICIANDO...',
+    networkStatus: '🟡 DETECTANDO...',
+    discoveryStatus: '🟡 AGUARDANDO REDE...',
+    devicesCount: 0,
+    logs: [] as LogEntry[]
+  });
+
   const initAgentAndCameras = async () => {
     try {
       setLoading(true);
-      // 1. Health Check
       const health = await checkHealth();
       if (!health.online) {
         setAgentOffline(true);
-        setAgentError(health.error || 'Windows Local Agent não conectado. Para descobrir e acessar câmeras da rede local, instale e execute o aplicativo Windows.');
+        setAgentError(health.error || 'Windows Local Agent não conectado.');
         setCameras([]);
         return;
       }
@@ -32,21 +47,170 @@ export default function App() {
       setAgentOffline(false);
       setAgentError('');
 
-      // 2. Fetch Cameras from Local Agent / Server
       const res = await fetchCameras();
       if (res && res.cameras) {
         setCameras(res.cameras);
       }
     } catch (err: any) {
-      console.warn('[App] Erro de conexão com o agente local:', err);
+      logger.error('FRONTEND', 'Erro de conexão com o agente local', err);
       setAgentOffline(true);
-      setAgentError('Windows Local Agent não conectado. Para descobrir e acessar câmeras da rede local, instale e execute o aplicativo Windows.');
+      setAgentError('Windows Local Agent não conectado.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Central WebSocket connection for real-time diagnostic event streaming
   useEffect(() => {
+    const correlationId = 'WS-CONN';
+    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    let wsUrl = '';
+    if (window.electronAPI) {
+      wsUrl = 'ws://127.0.0.1:8080/ws';
+    } else {
+      wsUrl = `${wsProto}//${window.location.host}/ws`;
+    }
+
+    logger.info('WS', `CONNECTING ${wsUrl}`, correlationId);
+    let socket: WebSocket;
+    let reconnectTimeout: any;
+
+    function connect() {
+      socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        logger.info('WS', 'CONNECTED', correlationId);
+        const pingMsg = JSON.stringify({ type: 'ping', timestamp: new Date().toISOString() });
+        socket.send(pingMsg);
+        logger.info('WS][TX', pingMsg, correlationId);
+      };
+
+      socket.onmessage = (event) => {
+        const dataText = event.data;
+        logger.info('WS][RX', dataText, correlationId);
+        try {
+          const parsed = JSON.parse(dataText);
+          
+          if (parsed.type === 'log') {
+            // Forward backend log events straight to browser F12 Console beautifully!
+            if (parsed.prefix === 'ERROR') {
+              logger.error('BACKEND', parsed.message, null, parsed.correlationId);
+            } else {
+              logger.info(parsed.prefix, parsed.message, parsed.correlationId);
+            }
+
+            setBootState((prev) => {
+              // Deduplicate logs
+              if (prev.logs.some(l => l.message === parsed.message && l.timestamp === parsed.timestamp)) {
+                return prev;
+              }
+              return {
+                ...prev,
+                logs: [...prev.logs, {
+                  timestamp: parsed.timestamp || new Date().toLocaleTimeString(),
+                  prefix: parsed.prefix,
+                  message: parsed.message
+                }]
+              };
+            });
+          } else if (parsed.type === 'agent_status') {
+            setBootState((prev) => ({
+              ...prev,
+              agentStatus: parsed.status === 'running' ? '🟢 ONLINE' : '🔴 OFFLINE'
+            }));
+          } else if (parsed.type === 'agent_status_raw') {
+            setBootState((prev) => ({
+              ...prev,
+              agentStatus: parsed.agentStatus,
+              networkStatus: parsed.networkStatus,
+              discoveryStatus: parsed.discoveryStatus
+            }));
+          } else if (parsed.type === 'network_interface') {
+            setBootState((prev) => ({
+              ...prev,
+              networkStatus: `🟢 ${parsed.ip} DETECTADA`
+            }));
+          } else if (parsed.type === 'discovery_started') {
+            setBootState((prev) => ({
+              ...prev,
+              discoveryStatus: '🔍 PROCURANDO CÂMERAS...'
+            }));
+          } else if (parsed.type === 'camera_found') {
+            // Re-fetch cameras list so discovered device is shown instantly
+            fetchCameras().then((res) => {
+              if (res && res.cameras) {
+                setCameras(res.cameras);
+              }
+            }).catch(() => {});
+          }
+        } catch (e) {
+          logger.error('WS', 'Erro ao processar mensagem do WebSocket', e, correlationId);
+        }
+      };
+
+      socket.onclose = () => {
+        logger.info('WS', 'CLOSED', correlationId);
+        reconnectTimeout = setTimeout(() => {
+          if (socket.readyState === WebSocket.CLOSED) {
+            connect();
+          }
+        }, 5000);
+      };
+
+      socket.onerror = () => {
+        // Conexão em transição ou ambiente restrito. A reconexão automática já lida no onclose.
+        logger.info('WS', 'Conexão em transição ou aguardando agente local.', correlationId);
+      };
+    }
+
+    connect();
+
+    return () => {
+      if (socket) socket.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    };
+  }, []);
+
+  // Poll fallback for network robustness
+  useEffect(() => {
+    let active = true;
+
+    const pollDiscovery = async () => {
+      try {
+        const res = await getDiscoveryStatus();
+        if (res && res.success && res.state && active) {
+          const prevCount = bootState.devicesCount;
+          
+          setBootState((prev) => ({
+            ...res.state,
+            // Guard logs state to prioritize realtime WS updates
+            logs: res.state.logs.length > prev.logs.length ? res.state.logs : prev.logs
+          }));
+
+          if (res.state.devicesCount !== prevCount) {
+            const listRes = await fetchCameras();
+            if (listRes && listRes.cameras && active) {
+              setCameras(listRes.cameras);
+            }
+          }
+        }
+      } catch (err) {
+        // Quiet fallback log
+      }
+    };
+
+    pollDiscovery();
+    const interval = setInterval(pollDiscovery, 4000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [bootState.devicesCount]);
+
+  useEffect(() => {
+    logger.info('BOOT', 'Nexus RTSP Monitor starting', 'REQ-BOOT');
+    logger.info('FRONTEND', 'Interface carregada', 'REQ-BOOT');
     initAgentAndCameras();
   }, []);
 
@@ -66,8 +230,18 @@ export default function App() {
     initAgentAndCameras();
   };
 
+  const handleResetDiagnostic = () => {
+    setBootState((prev) => ({
+      ...prev,
+      agentStatus: '🟡 INICIANDO...',
+      networkStatus: '🟡 DETECTANDO...',
+      discoveryStatus: '🟡 AGUARDANDO REDE...',
+      logs: [] // Limpa logs anteriores para iniciar a nova varredura do zero
+    }));
+  };
+
   return (
-    <div id="cftv-app-root" className="cftv-app-root">
+    <div id="cftv-app-root" className="cftv-app-root flex flex-col min-h-screen">
       {/* Malha Neural de Partículas */}
       <ParticleCanvas />
 
@@ -96,11 +270,13 @@ export default function App() {
         </button>
       )}
 
-      {/* Modais */}
+      {/* Modais de controle */}
       <AddCameraModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAdd={handleAddCamera}
+        bootState={bootState}
+        onResetDiagnostic={handleResetDiagnostic}
       />
 
       {selectedPtzCam && (

@@ -134,18 +134,28 @@ export function CameraCard({
 
         if (!isMounted) return;
 
-        // Sinalização SDP com o Go2RTC
-        const res = await fetch(`${go2rtcApiUrl}?src=${encodeURIComponent(streamId)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/sdp' },
-          body: pc.localDescription?.sdp
-        });
+        let answerSdp = '';
+        if (window.electronAPI?.sendWebrtcSdp) {
+          const sdpResult = await window.electronAPI.sendWebrtcSdp(streamId, pc.localDescription?.sdp || '');
+          if (!sdpResult.success) {
+            throw new Error(sdpResult.error || 'Erro na sinalização WebRTC via Electron');
+          }
+          answerSdp = sdpResult.sdp;
+        } else {
+          // Sinalização SDP com o Go2RTC (Web/Cloud Mode)
+          const res = await fetch(`${go2rtcApiUrl}?src=${encodeURIComponent(streamId)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/sdp' },
+            body: pc.localDescription?.sdp
+          });
 
-        if (!res.ok) {
-          throw new Error(`Servidor Go2RTC respondeu com erro HTTP ${res.status}`);
+          if (!res.ok) {
+            throw new Error(`Servidor Go2RTC respondeu com erro HTTP ${res.status}`);
+          }
+
+          answerSdp = await res.text();
         }
 
-        const answerSdp = await res.text();
         if (!isMounted) return;
 
         await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: answerSdp }));

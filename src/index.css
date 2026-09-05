@@ -565,3 +565,202 @@ select option {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* ============================================================================
+ * 8. TERMINAL DE DIAGNÓSTICO INTEGRADO DO MONITOR (CFTV)
+ * ============================================================================ */
+.cftv-terminal-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  background-color: rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(40px) !important;
+  -webkit-backdrop-filter: blur(40px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  padding: 1.5rem;
+  border-radius: 0px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.05) !important;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%) !important;
+}
+
+/* Cantoneira tática ciano superior direita igual ao GlassCard */
+.cftv-terminal-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-top: 2px solid #00f3ff;
+  border-right: 2px solid #00f3ff;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.cftv-terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.625rem;
+  margin-bottom: 0.125rem;
+}
+
+.cftv-terminal-title {
+  font-family: var(--font-tactical);
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: #00f3ff;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-transform: uppercase;
+}
+
+.cftv-terminal-badge {
+  font-size: 9px;
+  color: rgba(0, 243, 255, 0.6);
+  font-family: monospace;
+  letter-spacing: 0.1em;
+  font-weight: bold;
+}
+
+.cftv-terminal-hud {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  font-size: 10px;
+  font-family: monospace;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+@media (min-width: 640px) {
+  .cftv-terminal-hud {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.cftv-terminal-hud-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+}
+
+.cftv-terminal-hud-label {
+  color: #71717a;
+  font-family: var(--font-tactical);
+  font-weight: 700;
+}
+
+.cftv-terminal-logbox {
+  background-color: rgba(0, 0, 0, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 0.875rem;
+  font-family: monospace;
+  font-size: 10px;
+  color: #d4d4d8;
+  line-height: 1.6;
+  overflow-y: auto;
+  max-height: 140px;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cftv-terminal-log-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: start;
+  padding: 0.125rem 0.25rem;
+  border-radius: 2px;
+  transition: background-color 0.15s ease;
+}
+
+.cftv-terminal-log-row:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.cftv-terminal-timestamp {
+  color: #52525b;
+  user-select: none;
+}
+
+.cftv-terminal-ping-dot {
+  position: relative;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background-color: #00f3ff;
+  display: inline-block;
+}
+
+.cftv-terminal-ping-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background-color: #00f3ff;
+  animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.cftv-status-online {
+  color: #34d399 !important; /* emerald-400 */
+}
+
+.cftv-status-pending {
+  color: #fbbf24 !important; /* amber-400 */
+}
+
+.cftv-status-scanning {
+  color: #22d3ee !important; /* cyan-400 */
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.cftv-terminal-empty-logs {
+  color: #71717a;
+  text-align: center;
+  padding: 1.5rem 0;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.cftv-terminal-log-prefix {
+  font-weight: bold;
+}
+
+.cftv-terminal-log-message {
+  color: #f4f4f5;
+  flex: 1 1 0%;
+}
+
+/* Cores dos prefixos do log */
+.cftv-log-default {
+  color: #00f3ff !important; /* cyan */
+}
+
+.cftv-log-network {
+  color: #34d399 !important; /* emerald */
+}
+
+.cftv-log-discovery {
+  color: #c084fc !important; /* purple */
+}
+
+.cftv-log-rtsp {
+  color: #fbbf24 !important; /* amber */
+}
+
+.cftv-log-boot {
+  color: #60a5fa !important; /* blue */
+}
+
+.cftv-log-error {
+  color: #f87171 !important; /* red */
+}
+

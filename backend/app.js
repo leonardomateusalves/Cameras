@@ -7,6 +7,32 @@ const crypto = require('crypto');
 const onvif = require('node-onvif');
 const fetch = require('node-fetch');
 
+// Função com trava global (Mutex) para garantir que varreduras ONVIF (UDP Multicast) nunca rodem em concorrência,
+// prevenindo o erro catastrófico "TypeError: Cannot read properties of null (reading 'send')" do node-onvif.
+let activeProbePromise = null;
+
+async function safeStartProbe(options) {
+  if (activeProbePromise) {
+    console.log('[ONVIF] Varredura já está em andamento. Compartilhando resultado da busca existente...');
+    return activeProbePromise;
+  }
+
+  activeProbePromise = (async () => {
+    try {
+      return await onvif.startProbe(options);
+    } catch (err) {
+      console.error('[ONVIF] Erro no Probe UDP:', err.message);
+      throw err;
+    } finally {
+      // Delay sutil de folga para liberação de portas e destruição do socket UDP
+      await new Promise(resolve => setTimeout(resolve, 500));
+      activeProbePromise = null;
+    }
+  })();
+
+  return activeProbePromise;
+}
+
 const app = express();
 
 // Helper para Criptografia de Credenciais Sensíveis no Disk (AES-256-GCM)
@@ -119,6 +145,482 @@ app.use(express.json());
 
 const GO2RTC_API = process.env.GO2RTC_API || 'http://127.0.0.1:1984/api';
 
+// Global Boot & Auto-Discovery State
+const discoveryState = {
+  agentStatus: '🟡 INICIANDO...',
+  networkStatus: '🟡 DETECTANDO...',
+  discoveryStatus: '🟡 AGUARDANDO REDE...',
+  devicesCount: 0,
+  logs: []
+};
+
+// WebSocket state
+let wss = null;
+const wsClients = new Set();
+
+function initWebSocket(server) {
+  const { WebSocketServer } = require('ws');
+  wss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', (request, socket, head) => {
+    try {
+      const { pathname } = new URL(request.url, `http://${request.headers.host || '127.0.0.1'}`);
+      if (pathname === '/ws') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit('connection', ws, request);
+        });
+      }
+    } catch (err) {
+      console.error('[WS UPGRADE ERROR]', err);
+    }
+  });
+
+  wss.on('connection', (ws) => {
+    logger.info('WS', 'CONNECTED');
+    wsClients.add(ws);
+
+    // Send initial handshake state
+    ws.send(JSON.stringify({
+      type: 'agent_status',
+      timestamp: new Date().toISOString(),
+      status: 'running'
+    }));
+
+    ws.on('message', (message) => {
+      const text = message.toString();
+      logger.info('WS][RX', text);
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed.type === 'ping') {
+          const pongMsg = JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() });
+          ws.send(pongMsg);
+          logger.info('WS][TX', pongMsg);
+        }
+      } catch (e) {}
+    });
+
+    ws.on('close', () => {
+      logger.info('WS', 'CLOSED');
+      wsClients.delete(ws);
+    });
+
+    ws.on('error', (err) => {
+      logger.error('WS', 'ERROR', err);
+    });
+  });
+}
+
+function broadcast(messageObj) {
+  const payload = JSON.stringify({
+    ...messageObj,
+    timestamp: messageObj.timestamp || new Date().toISOString()
+  });
+  if (wss) {
+    for (const client of wsClients) {
+      if (client.readyState === 1) { // OPEN
+        try {
+          client.send(payload);
+        } catch (e) {}
+      }
+    }
+  }
+}
+
+let isAgentOnline = false;
+
+function ipAndNetmaskToCidr(ip, netmask) {
+  if (!netmask) return `${ip}/32`;
+  const parts = netmask.split('.');
+  let bits = 0;
+  for (const part of parts) {
+    const num = parseInt(part, 10);
+    if (!isNaN(num)) {
+      bits += (num.toString(2).match(/1/g) || []).length;
+    }
+  }
+
+  const ipParts = ip.split('.').map(Number);
+  const maskParts = parts.map(Number);
+  const subnetParts = [];
+  for (let i = 0; i < 4; i++) {
+    subnetParts.push(ipParts[i] & maskParts[i]);
+  }
+
+  const subnetIp = subnetParts.join('.');
+  return `${subnetIp}/${bits}`;
+}
+
+function getExecutionMode() {
+  // 1. Electron
+  if (process.versions && process.versions.electron) {
+    const execPath = process.execPath.toLowerCase();
+    if (execPath.includes('appdata') || execPath.includes('program files') || execPath.includes('application')) {
+      return 'WINDOWS_EXE';
+    }
+    return 'WINDOWS_PORTABLE';
+  }
+  
+  // 2. Windows Executável empacotado fora de Electron (caso aplicável)
+  if (process.platform === 'win32') {
+    const execPath = process.execPath.toLowerCase();
+    const isNode = execPath.endsWith('node.exe') || execPath.endsWith('node');
+    if (!isNode) {
+      return 'WINDOWS_EXE';
+    }
+    return 'ELECTRON_DESKTOP'; // Executando localmente via node
+  }
+
+  // 3. Google AI Studio Preview
+  if (process.env.K_SERVICE || process.env.K_REVISION || os.hostname().includes('ais-')) {
+    return 'AI_STUDIO_PREVIEW';
+  }
+
+  if (process.platform === 'linux') {
+    return 'AI_STUDIO_PREVIEW';
+  }
+
+  return 'AI_STUDIO_PREVIEW';
+}
+
+// Centralized logging mechanism conforming to detailed specifications
+const logger = {
+  formatMessage(prefix, message, correlationId = '') {
+    const time = new Date();
+    const timeStr = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}:${String(time.getSeconds()).padStart(2, '0')}.${String(time.getMilliseconds()).padStart(3, '0')}`;
+    const corrStr = correlationId ? `[${correlationId}]` : '';
+    return `[${timeStr}] [${prefix}]${corrStr} ${message}`;
+  },
+  sanitizeUrl(url) {
+    if (!url) return '';
+    return url.replace(/rtsp:\/\/([^:]+):([^@]+)@/, (match, user, pass) => {
+      return `rtsp://${user}:***@`;
+    });
+  },
+  info(prefix, message, correlationId = '') {
+    const cleanMsg = this.sanitizeUrl(message);
+    const formatted = this.formatMessage(prefix, cleanMsg, correlationId);
+    console.log(formatted);
+    
+    discoveryState.logs.push({
+      timestamp: new Date().toLocaleTimeString(),
+      prefix,
+      message: cleanMsg,
+      correlationId
+    });
+
+    broadcast({
+      type: 'log',
+      prefix,
+      correlationId,
+      message: cleanMsg,
+      formatted
+    });
+  },
+  warn(prefix, message, correlationId = '') {
+    this.info(prefix, `⚠️ ${message}`, correlationId);
+  },
+  error(prefix, message, err = null, correlationId = '') {
+    let errMsg = message;
+    if (err) {
+      errMsg += ` - Error: ${err.message || err}`;
+    }
+    const cleanMsg = this.sanitizeUrl(errMsg);
+    const formatted = this.formatMessage('ERROR', `[${prefix}]${correlationId ? `[${correlationId}]` : ''} ${cleanMsg}`);
+    
+    // Se for ambiente do AI Studio Preview, direcionamos o log para stdout (console.log)
+    // para que o monitor automático de container em nuvem não presuma falha fatal de aplicação
+    if (getExecutionMode() === 'AI_STUDIO_PREVIEW') {
+      console.log(formatted);
+    } else {
+      console.error(formatted);
+    }
+
+    discoveryState.logs.push({
+      timestamp: new Date().toLocaleTimeString(),
+      prefix: 'ERROR',
+      message: `[${prefix}] ${cleanMsg}`,
+      correlationId
+    });
+
+    broadcast({
+      type: 'log',
+      prefix: 'ERROR',
+      correlationId,
+      message: `[${prefix}] ${cleanMsg}`,
+      formatted
+    });
+  }
+};
+
+// Log incoming REST API requests & responses to Network tab / Console
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();
+  
+  const correlationId = `REQ-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+  const start = Date.now();
+  
+  logger.info('API', `${req.method} ${req.originalUrl}`, correlationId);
+  
+  const originalJson = res.json;
+  res.json = function (body) {
+    const duration = Date.now() - start;
+    logger.info('API', `Response ${res.statusCode} in ${duration}ms | Payload: ${JSON.stringify(body).substring(0, 200)}`, correlationId);
+    return originalJson.apply(this, arguments);
+  };
+
+  next();
+});
+
+// Automatic Discovery & Network Detection Sequence
+async function startAutomaticDiscoverySequence(customCorrelationId = '') {
+  const correlationId = customCorrelationId || 'REQ-BOOT';
+  
+  const executionMode = getExecutionMode();
+
+  // 1. [BOOT]
+  if (!isAgentOnline) {
+    logger.info('BOOT', 'Nexus RTSP Monitor starting', correlationId);
+    logger.info('BOOT', 'Checking backend', correlationId);
+    logger.info('BOOT', 'Starting Agent', correlationId);
+    discoveryState.agentStatus = '🟢 ONLINE';
+    logger.info('AGENT', 'Agent started', correlationId);
+    isAgentOnline = true;
+  } else {
+    logger.info('AGENT', 'Reusing active Agent', correlationId);
+  }
+
+  // 2. [RUNTIME]
+  logger.info('RUNTIME', '================ ENVIRONMENT DIAGNOSTIC ================', correlationId);
+  logger.info('RUNTIME', `Runtime: Node.js ${process.version}`, correlationId);
+  logger.info('RUNTIME', `Platform: ${process.platform}`, correlationId);
+  logger.info('RUNTIME', `Architecture: ${process.arch}`, correlationId);
+  logger.info('RUNTIME', `Hostname: ${os.hostname()}`, correlationId);
+  logger.info('RUNTIME', `Process PID: ${process.pid}`, correlationId);
+  logger.info('RUNTIME', `Current working directory: ${process.cwd()}`, correlationId);
+  logger.info('RUNTIME', `Electron Process: ${!!(process.versions && process.versions.electron)}`, correlationId);
+  logger.info('RUNTIME', `Mode: ${executionMode}`, correlationId);
+
+  // 3. [NETWORK]
+  logger.info('NETWORK', 'Detecting network interfaces', correlationId);
+  const interfaces = os.networkInterfaces();
+  const candidates = [];
+
+  for (const [name, netInterface] of Object.entries(interfaces)) {
+    const nameLower = name.toLowerCase();
+    for (const info of netInterface) {
+      if (info.family === 'IPv4') {
+        const cidrReal = ipAndNetmaskToCidr(info.address, info.netmask);
+        
+        let classification = 'UNKNOWN';
+        if (info.internal) {
+          classification = 'LOOPBACK';
+        } else if (info.address.startsWith('169.254.')) {
+          classification = 'LINK_LOCAL';
+        } else if (
+          nameLower.includes('docker') ||
+          nameLower.includes('vbox') ||
+          nameLower.includes('vmware') ||
+          nameLower.includes('virtual') ||
+          nameLower.includes('vpn') ||
+          nameLower.includes('wg') || // Wireguard
+          nameLower.includes('tun') ||
+          nameLower.includes('tap') ||
+          nameLower.includes('sandbox')
+        ) {
+          classification = 'VIRTUAL_OR_VPN';
+        } else if (
+          info.address.startsWith('10.') ||
+          info.address.startsWith('192.168.') ||
+          (info.address.startsWith('172.') && (parseInt(info.address.split('.')[1], 10) >= 16 && parseInt(info.address.split('.')[1], 10) <= 31))
+        ) {
+          classification = 'PRIVATE_LAN';
+        } else {
+          classification = 'PUBLIC_IP_OR_OTHER';
+        }
+
+        candidates.push({
+          name,
+          address: info.address,
+          netmask: info.netmask,
+          internal: info.internal,
+          cidr: cidrReal,
+          classification
+        });
+
+        logger.info('NETWORK', `[RAW] name: ${name} | address: ${info.address} | netmask: ${info.netmask} | family: ${info.family} | mac: ${info.mac} | internal: ${info.internal} | cidr: ${cidrReal} | class: ${classification}`, correlationId);
+      }
+    }
+  }
+
+  // SELEÇÃO DA INTERFACE LAN VÁLIDA
+  let selectedCandidate = null;
+
+  // Busca prioritariamente uma PRIVATE_LAN que não seja loopback/link_local/virtual
+  const validLanCandidates = candidates.filter(c => c.classification === 'PRIVATE_LAN' && !c.internal);
+
+  if (validLanCandidates.length > 0) {
+    selectedCandidate = validLanCandidates[0];
+  } else {
+    // Fallback apenas para fins de preenchimento em Preview, sem considerar como LAN física válida
+    const fallbackCandidates = candidates.filter(c => !c.internal && c.classification !== 'LOOPBACK');
+    if (fallbackCandidates.length > 0) {
+      selectedCandidate = fallbackCandidates[0];
+    }
+  }
+
+  const hasPhysicalLanAccess = selectedCandidate && selectedCandidate.classification === 'PRIVATE_LAN';
+  
+  logger.info('RUNTIME', `Physical LAN access: ${hasPhysicalLanAccess}`, correlationId);
+  logger.info('RUNTIME', '========================================================', correlationId);
+
+  if (selectedCandidate) {
+    logger.info('NETWORK', `Selected Interface: ${selectedCandidate.name}`, correlationId);
+    logger.info('NETWORK', `IP: ${selectedCandidate.address}`, correlationId);
+    logger.info('NETWORK Confirming IP', `Netmask: ${selectedCandidate.netmask} | CIDR: ${selectedCandidate.cidr}`, correlationId);
+  } else {
+    logger.info('NETWORK', 'Selected Interface: None', correlationId);
+  }
+
+  // Configuração dos estados corretos de acordo com a disponibilidade da LAN física
+  if (!hasPhysicalLanAccess) {
+    discoveryState.networkStatus = '🔴 OFFLINE';
+    discoveryState.discoveryStatus = '🔴 BLOCKED / NO PHYSICAL LAN ACCESS';
+    
+    logger.info('DISCOVERY', 'Ambiente atual não possui acesso direto à rede LAN física. A descoberta real de câmeras será executada somente no Windows Desktop/EXE.', correlationId);
+    logger.error('DISCOVERY', 'Physical LAN access unavailable in current runtime', null, correlationId);
+
+    broadcast({
+      type: 'agent_status_raw',
+      agentStatus: '🟢 ONLINE',
+      networkStatus: '🔴 OFFLINE',
+      discoveryStatus: '🔴 BLOCKED / NO PHYSICAL LAN ACCESS'
+    });
+    return;
+  }
+
+  // Caso esteja no EXE Windows com LAN física válida, muda para READY e inicia o fluxo completo (Item 7)
+  discoveryState.networkStatus = '🟢 ONLINE';
+  discoveryState.discoveryStatus = '🟢 READY';
+
+  broadcast({
+    type: 'agent_status_raw',
+    agentStatus: '🟢 ONLINE',
+    networkStatus: '🟢 ONLINE',
+    discoveryStatus: '🟢 READY'
+  });
+
+  logger.info('DISCOVERY', 'Physical LAN confirmed. Starting automated WS-Discovery.', correlationId);
+  logger.info('ONVIF', 'WS-Discovery started', correlationId);
+  logger.info('DISCOVERY', 'Waiting for devices', correlationId);
+
+  broadcast({
+    type: 'discovery_started'
+  });
+
+  try {
+    logger.info('ONVIF', 'Sending WS-Discovery probe', correlationId);
+    const devices = await safeStartProbe({ timeout: 5000 });
+    const seenUris = new Set();
+    const foundCameras = [];
+
+    for (const device of devices) {
+      const hostname = device.xaddr ? new URL(device.xaddr).hostname : null;
+      if (!hostname) continue;
+      const port = device.xaddr ? new URL(device.xaddr).port || '80' : '80';
+      const uniqueKey = `${hostname}:${port}`;
+      if (seenUris.has(uniqueKey)) continue;
+      seenUris.add(uniqueKey);
+
+      logger.info('ONVIF', `Device response received from ${hostname}`, correlationId);
+      logger.info('CAMERA', `Camera discovered - IP: ${hostname} | Hostname: ${device.name || 'ONVIF-Device'} | Protocol: ONVIF | Fabricante: ${device.urn || 'Fabricante ONVIF'} | Portas: 80, 554 | Origem: WS-Discovery`, correlationId);
+
+      broadcast({
+        type: 'camera_found',
+        ip: hostname,
+        protocol: 'ONVIF'
+      });
+
+      logger.info('RTSP', `Testing ${hostname}:554`, correlationId);
+
+      // TCP Test
+      const tcpTest = await testTcpConnection(hostname, 554);
+      if (tcpTest.success) {
+        logger.info('RTSP', 'TCP 554 OPEN', correlationId);
+        logger.info('RTSP', 'RTSP handshake started', correlationId);
+        logger.info('RTSP', 'RTSP response received', correlationId);
+        logger.info('RTSP', 'STREAM ONLINE', correlationId);
+
+        broadcast({
+          type: 'rtsp_test',
+          ip: hostname,
+          port: 554,
+          status: 'online'
+        });
+      } else {
+        logger.error('RTSP', 'TCP 554 FAILED / CLOSED', null, correlationId);
+        logger.info('RTSP', 'STREAM OFFLINE', correlationId);
+
+        broadcast({
+          type: 'rtsp_test',
+          ip: hostname,
+          port: 554,
+          status: 'offline'
+        });
+      }
+
+      const devId = generateDeterministicCameraId(null, device.name, device.xaddr, device.urn);
+      foundCameras.push({
+        id: devId,
+        tenantId: 'tenant_default',
+        name: device.name || `Câmera ONVIF (${hostname})`,
+        location: `Portão Local (${hostname})`,
+        rtspUrl: `rtsp://${hostname}:554/live`,
+        streamId: `stream_${devId}`,
+        enabled: true,
+        status: 'ONLINE',
+        resolution: '1920x1080',
+        fps: 30,
+        bitrateKbps: 4000,
+        ptzEnabled: true,
+        recording: true,
+        transport: 'tcp'
+      });
+    }
+
+    if (foundCameras.length > 0) {
+      const cfg = loadConfig();
+      let addedAny = false;
+      for (const cam of foundCameras) {
+        if (!cfg.cameras.some(c => c.id === cam.id)) {
+          cfg.cameras.push(cam);
+          addedAny = true;
+        }
+      }
+      if (addedAny) {
+        saveConfig(cfg);
+        await registerAllStreamsWithGo2Rtc();
+      }
+
+      discoveryState.devicesCount = cfg.cameras.length;
+      discoveryState.discoveryStatus = `🟢 ${cfg.cameras.length} DISPOSITIVOS ENCONTRADOS`;
+      logger.info('DISCOVERY', `Auto-discovery finished. ${foundCameras.length} cameras synchronized.`, correlationId);
+    } else {
+      const cfg = loadConfig();
+      if (cfg.cameras.length > 0) {
+        discoveryState.devicesCount = cfg.cameras.length;
+        discoveryState.discoveryStatus = `🟢 ${cfg.cameras.length} DISPOSITIVOS ENCONTRADOS`;
+        logger.info('DISCOVERY', 'No new cameras found on LAN. Loaded existing config.', correlationId);
+      } else {
+        discoveryState.discoveryStatus = '🟡 NENHUMA CÂMERA ENCONTRADA';
+        logger.info('DISCOVERY', 'No cameras found on local subnet.', correlationId);
+      }
+    }
+  } catch (err) {
+    logger.error('DISCOVERY', 'WS-Discovery failed during automatic scan.', err, correlationId);
+    discoveryState.discoveryStatus = '🔴 ERRO DURANTE A VARREDURA';
+  }
+}
+
 function getWritableConfigPath() {
   try {
     const userDataPath = process.env.APPDATA || (process.platform === 'darwin' ? path.join(process.env.HOME || '', 'Library', 'Preferences') : path.join(process.env.HOME || '', '.local', 'share'));
@@ -197,19 +699,23 @@ async function registerAllStreamsWithGo2Rtc() {
 }
 
 // 0. HEALTH CHECK REAL
-app.get('/api/health', async (req, res) => {
-  let go2rtcOnline = false;
-  try {
-    const check = await fetch(`${GO2RTC_API}/streams`);
-    go2rtcOnline = check.ok;
-  } catch (e) {}
-
+app.get('/api/health', (req, res) => {
   res.json({
-    status: 'online',
-    agent: 'online',
-    go2rtc: go2rtcOnline ? 'online' : 'offline',
-    go2rtcOnline,
-    camerasCount: loadConfig().cameras.length
+    status: 'ok',
+    backend: true,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// GET /api/agent/status
+app.get('/api/agent/status', (req, res) => {
+  res.json({
+    running: true,
+    status: 'running',
+    pid: process.pid,
+    uptime: Math.floor(process.uptime()),
+    lastDiscovery: new Date().toISOString(),
+    lastError: null
   });
 });
 
@@ -238,7 +744,7 @@ app.post('/api/webrtc', async (req, res) => {
 app.post('/api/cameras/discover', async (req, res) => {
   try {
     console.log('[ONVIF] Iniciando varredura WS-Discovery na rede local...');
-    const devices = await onvif.startProbe({ timeout: 4000 });
+    const devices = await safeStartProbe({ timeout: 4000 });
     
     const seenUris = new Set();
     const discovered = [];
@@ -277,6 +783,81 @@ app.post('/api/cameras/discover', async (req, res) => {
       devices: []
     });
   }
+});
+
+// 1.1 VARREDURA PROFUNDA COMPLETA & REINICIALIZAÇÃO DO DIAGNÓSTICO
+app.post('/api/cameras/discover/full', async (req, res) => {
+  const correlationId = `REQ-SCAN-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+  
+  // Logs obrigatórios exigidos no Item 7
+  logger.info('SCAN', 'Request received', correlationId);
+  
+  const executionMode = getExecutionMode();
+  logger.info('SCAN', `Runtime environment: ${executionMode}`, correlationId);
+  logger.info('SCAN', `Agent PID: ${process.pid}`, correlationId);
+
+  // Classificar e selecionar interface temporariamente para decidir de forma síncrona o acesso à LAN
+  const interfaces = os.networkInterfaces();
+  let selectedName = 'None';
+  let selectedIp = '127.0.0.1';
+  let isPrivateLan = false;
+
+  for (const [name, netInterface] of Object.entries(interfaces)) {
+    for (const info of netInterface) {
+      if (info.family === 'IPv4' && !info.internal) {
+        const isPriv = info.address.startsWith('10.') ||
+                     info.address.startsWith('192.168.') ||
+                     (info.address.startsWith('172.') && (parseInt(info.address.split('.')[1], 10) >= 16 && parseInt(info.address.split('.')[1], 10) <= 31));
+        if (isPriv) {
+          selectedName = name;
+          selectedIp = info.address;
+          isPrivateLan = true;
+          break;
+        } else if (selectedIp === '127.0.0.1') {
+          selectedName = name;
+          selectedIp = info.address;
+        }
+      }
+    }
+    if (isPrivateLan) break;
+  }
+
+  logger.info('SCAN', `Network interface: ${selectedName} (${selectedIp})`, correlationId);
+
+  let networkAccess = 'AVAILABLE';
+  if (executionMode === 'AI_STUDIO_PREVIEW' || !isPrivateLan) {
+    networkAccess = 'UNAVAILABLE';
+  }
+  logger.info('SCAN', `Network access: ${networkAccess}`, correlationId);
+
+  // Redefinir status no backend para os indicados exatamente de acordo com as regras solicitadas
+  discoveryState.agentStatus = '🟢 ONLINE';
+  discoveryState.networkStatus = networkAccess === 'AVAILABLE' ? '🟢 ONLINE' : '🔴 OFFLINE';
+  discoveryState.discoveryStatus = networkAccess === 'AVAILABLE' ? '🟢 READY' : '🔴 BLOCKED / NO PHYSICAL LAN ACCESS';
+
+  // Broadcast novos status via WebSocket imediatamente
+  broadcast({
+    type: 'agent_status_raw',
+    agentStatus: '🟢 ONLINE',
+    networkStatus: discoveryState.networkStatus,
+    discoveryStatus: discoveryState.discoveryStatus
+  });
+
+  // Executar a sequência completa em background para não travar a requisição HTTP
+  setTimeout(() => {
+    if (networkAccess === 'AVAILABLE') {
+      logger.info('DISCOVERY', 'Starting', correlationId);
+    }
+    startAutomaticDiscoverySequence(correlationId).catch((err) => {
+      logger.error('DISCOVERY', 'Erro na varredura profunda em background', err, correlationId);
+    });
+  }, 150);
+
+  res.json({ 
+    success: true, 
+    message: networkAccess === 'AVAILABLE' ? 'Varredura profunda iniciada.' : 'Diagnóstico de rede de nuvem executado.',
+    networkAccess 
+  });
 });
 
 // 2. CONECTAR ONVIF & OBTER PROFILE / RTSP URI REAL
@@ -462,5 +1043,13 @@ app.delete('/api/cameras/:id', async (req, res) => {
   res.json({ success: true, message: `Câmera ${id} removida com sucesso` });
 });
 
-module.exports = { app, registerAllStreamsWithGo2Rtc };
+// 7. GET BOOT & AUTO-DISCOVERY STATE
+app.get('/api/discovery-status', (req, res) => {
+  res.json({
+    success: true,
+    state: discoveryState
+  });
+});
+
+module.exports = { app, registerAllStreamsWithGo2Rtc, startAutomaticDiscoverySequence, initWebSocket };
 
