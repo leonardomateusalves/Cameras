@@ -24,7 +24,34 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm ci --include=optional
+        run: |
+          npm ci --include=optional
+          npm install --include=optional
+
+      - name: Verify Windows Native Bindings
+        run: |
+          node -e "
+            const pkgs = [
+              '@rollup/rollup-win32-x64-msvc',
+              '@tailwindcss/oxide-win32-x64-msvc',
+              'lightningcss-win32-x64-msvc',
+              '@esbuild/win32-x64'
+            ];
+            let missing = [];
+            for (const pkg of pkgs) {
+              try {
+                require.resolve(pkg);
+                console.log('✓ Verified native module:', pkg);
+              } catch (e) {
+                console.log('⚠ Missing native module:', pkg, '-', e.message);
+                missing.push(pkg);
+              }
+            }
+            if (missing.length > 0) {
+              console.log('Installing missing Windows native packages:', missing.join(' '));
+              require('child_process').execSync('npm install --include=optional --no-save ' + missing.join(' '), { stdio: 'inherit' });
+            }
+          "
 
       - name: Download Go2RTC Binary for Windows (v1.9.8)
         shell: powershell
