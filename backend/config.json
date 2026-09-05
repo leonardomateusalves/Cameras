@@ -1,0 +1,63 @@
+{
+  "server": {
+    "port": 8080,
+    "idleTimeoutSeconds": 45,
+    "hlsSegmentDuration": 1,
+    "hlsListSize": 3,
+    "allowOnDemand": true
+  },
+  "cameras": [
+    {
+      "id": "camera1",
+      "name": "Portão Principal / Entrada",
+      "location": "Acesso Externo A1",
+      "rtspUrl": "rtsp://admin:admin123@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0",
+      "enabled": true,
+      "protocol": "tcp",
+      "transcode": false,
+      "resolution": "1920x1080",
+      "fps": 30,
+      "ptzEnabled": true,
+      "demoFallback": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+    },
+    {
+      "id": "camera2",
+      "name": "Pátio e Estacionamento",
+      "location": "Setor Norte B2",
+      "rtspUrl": "rtsp://admin:admin123@192.168.1.109:554/Streaming/Channels/101",
+      "enabled": true,
+      "protocol": "tcp",
+      "transcode": false,
+      "resolution": "1920x1080",
+      "fps": 25,
+      "ptzEnabled": false,
+      "demoFallback": "https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8"
+    },
+    {
+      "id": "camera3",
+      "name": "Recepção e Catracas",
+      "location": "Hall Central",
+      "rtspUrl": "rtsp://viewer:pass2026@192.168.1.110:554/live/ch0",
+      "enabled": true,
+      "protocol": "tcp",
+      "transcode": false,
+      "resolution": "1280x720",
+      "fps": 30,
+      "ptzEnabled": true,
+      "demoFallback": "https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8"
+    },
+    {
+      "id": "camera4",
+      "name": "Corredor de Servidores & TI",
+      "location": "Data Center Piso 2",
+      "rtspUrl": "rtsp://admin:secure123@192.168.1.111:554/live/sub",
+      "enabled": true,
+      "protocol": "tcp",
+      "transcode": false,
+      "resolution": "1920x1080",
+      "fps": 30,
+      "ptzEnabled": true,
+      "demoFallback": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+    }
+  ]
+}

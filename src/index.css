@@ -1,0 +1,567 @@
+/**
+ * ============================================================================
+ * 🛡️ NEXUS RTSP MONITOR - ESTILOS GLOBAIS E TÁTICOS
+ * ============================================================================
+ * Este arquivo centraliza toda a estilização da aplicação SPA.
+ * Organizado em seções bem definidas com comentários em Português.
+ */
+
+@import "tailwindcss";
+
+/* ============================================================================
+ * 1. CONFIGURAÇÃO DE FONTES E TEMA
+ * ============================================================================ */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Orbitron", sans-serif;
+  --font-tactical: "Rajdhani", sans-serif;
+}
+
+.font-orbitron {
+  font-family: 'Orbitron', sans-serif !important;
+}
+
+.font-rajdhani {
+  font-family: 'Rajdhani', sans-serif !important;
+}
+
+
+/* ============================================================================
+ * 2. RESET E FUNDO GLOBAL
+ * ============================================================================ */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: #02050c;
+  color: #e2e8f0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  background-image:
+    radial-gradient(circle at 20% 15%, rgba(0, 243, 255, 0.05), transparent 45%),
+    radial-gradient(circle at 80% 85%, rgba(0, 140, 255, 0.04), transparent 50%),
+    radial-gradient(ellipse at center, rgba(5, 11, 24, 0.6) 0%, rgba(2, 5, 12, 0.98) 100%);
+  background-size: 100% 100%;
+  background-attachment: fixed;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+
+/* ============================================================================
+ * 3. SCROLLBAR CIBERNÉTICA
+ * ============================================================================ */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(2, 5, 12, 0.85);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 243, 255, 0.25);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00f3ff;
+  box-shadow: 0 0 8px #00f3ff;
+}
+
+
+/* ============================================================================
+ * 4. CANVAS DE PARTÍCULAS (BACKGROUND)
+ * ============================================================================ */
+.cftv-particle-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+
+/* ============================================================================
+ * 5. LAYOUT ESTRUTURAL (APP.TSX)
+ * ============================================================================ */
+.cftv-app-root {
+  min-height: 100vh;
+  width: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  overflow-x: hidden;
+}
+
+.cftv-main-viewport {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  position: relative;
+  z-index: 10;
+  min-width: 0;
+}
+
+@media (min-width: 640px) {
+  .cftv-main-viewport {
+    padding: 0.75rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .cftv-main-viewport {
+    padding: 1rem;
+  }
+}
+
+.cftv-viewport-container {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.cftv-camera-grid {
+  width: 100%;
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+  .cftv-camera-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.cftv-camera-grid-focused {
+  grid-template-columns: 1fr;
+  max-width: 56rem;
+  margin: 0 auto;
+}
+
+.cftv-camera-wrapper {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+
+/* ============================================================================
+ * 6. MODAIS E FORMULÁRIOS
+ * ============================================================================ */
+.cftv-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background-color: rgba(0, 0, 0, 0.55); /* Clareado para permitir que o desfoque do vidro tenha efeito */
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.cftv-input {
+  width: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: #f4f4f5;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.cftv-select {
+  width: 100%;
+  background-color: rgba(6, 12, 24, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 0.5rem 2.25rem 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: #00f3ff;
+  font-family: var(--font-tactical), var(--font-sans), sans-serif;
+  font-weight: 600;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2300f3ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.cftv-input:focus,
+.cftv-select:focus {
+  border-color: #00f3ff;
+  box-shadow: 0 0 10px rgba(0, 243, 255, 0.25);
+}
+
+.cftv-select option,
+select option {
+  background-color: #060c18 !important;
+  color: #00f3ff !important;
+  font-family: var(--font-tactical), var(--font-sans), sans-serif;
+  font-weight: 600;
+  padding: 10px;
+  border: none;
+}
+
+.cftv-select option:hover,
+.cftv-select option:focus,
+.cftv-select option:checked {
+  background-color: rgba(0, 243, 255, 0.2) !important;
+  color: #00f3ff !important;
+}
+
+
+/* ============================================================================
+ * 7. BOTÕES E COMPONENTES INTERATIVOS
+ * ============================================================================ */
+
+/* Botão Primário Tático */
+.cftv-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  height: 1.75rem;
+  padding: 0 0.625rem;
+  font-family: var(--font-tactical);
+  font-weight: 700;
+  font-size: 0.75rem;
+  background-color: rgba(0, 243, 255, 0.2);
+  color: #67e8f9;
+  border: 1px solid rgba(0, 243, 255, 0.4);
+  transition: background-color 0.2s ease;
+}
+
+.cftv-btn-primary:hover {
+  background-color: rgba(0, 243, 255, 0.3);
+}
+
+/* Botão Flutuante (FAB) Estilo Glasscard Redondo */
+.cftv-btn-fab {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 40;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid transparent;
+  color: #00f3ff;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+  transition: all 0.2s ease;
+}
+
+.cftv-btn-fab:hover {
+  border-color: #00f3ff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cftv-btn-fab:active {
+  transform: scale(0.95);
+}
+
+/* Botão Roxo (PTZ) */
+.cftv-btn-purple {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  height: 1.75rem;
+  padding: 0 0.625rem;
+  font-family: var(--font-tactical);
+  font-weight: 700;
+  font-size: 0.75rem;
+  background-color: rgba(168, 85, 247, 0.2);
+  color: #d8b4fe;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  transition: background-color 0.2s ease;
+}
+
+.cftv-btn-purple:hover {
+  background-color: rgba(168, 85, 247, 0.3);
+}
+
+/* Botão Escuro */
+.cftv-btn-dark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  height: 1.75rem;
+  padding: 0 0.625rem;
+  font-family: var(--font-tactical);
+  font-weight: 700;
+  font-size: 0.75rem;
+  background-color: rgba(39, 39, 42, 0.9);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: background-color 0.2s ease;
+}
+
+.cftv-btn-dark:hover {
+  background-color: rgba(63, 63, 70, 1);
+}
+
+/* Botão de Ícone Compacto */
+.cftv-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  color: #d4d4d8;
+  background-color: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.cftv-btn-icon:hover {
+  color: #00f3ff;
+  border-color: rgba(0, 243, 255, 0.5);
+}
+
+/* Botão de Ação Sólido */
+.cftv-btn-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  font-family: var(--font-tactical);
+  font-weight: 700;
+  font-size: 0.75rem;
+  background-color: #00f3ff;
+  color: #000000;
+  box-shadow: none;
+  transition: background-color 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: none;
+}
+
+.cftv-btn-action:hover {
+  background-color: #67e8f9;
+}
+
+/* Botão Prismático Tático (HUD Cyberpunk / High-Tech CFTV) */
+.cftv-btn-prismatic {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.75rem;
+  font-family: var(--font-tactical, 'Rajdhani', sans-serif);
+  font-weight: 800;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #000000;
+  background: linear-gradient(135deg, #00f3ff 0%, #00d2ff 40%, #0284c7 100%);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+.cftv-btn-prismatic::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.35), transparent 60%);
+  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+  pointer-events: none;
+}
+
+.cftv-btn-prismatic:hover {
+  background: linear-gradient(135deg, #38ef7d 0%, #00f3ff 50%, #00b8d4 100%);
+  box-shadow: none;
+  transform: translateY(-2px) scale(1.02);
+  color: #020617;
+}
+
+.cftv-btn-prismatic:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: none;
+}
+
+/* Botão de Contorno */
+.cftv-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  font-family: var(--font-tactical);
+  font-weight: 700;
+  font-size: 0.75rem;
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #d4d4d8;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transition: background-color 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cftv-btn-outline:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+/* Chip OSD */
+.cftv-osd-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  height: 1.375rem;
+  line-height: 1;
+  padding: 0 0.375rem;
+  background-color: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  font-family: var(--font-tactical);
+  font-weight: 700;
+  font-size: 10px;
+}
+
+/* ============================================================================
+ * 📦 MODAIS E CAIXAS DE DIÁLOGO
+ * ============================================================================ */
+
+/* Estado Base e Hover sugerido pela IA para elementos clicáveis / cards de vidro */
+.efeito-glass-hover {
+  background-color: rgba(255, 255, 255, 0.03); /* Fundo quase transparente */
+  border: 1px solid rgba(255, 255, 255, 0.1); /* Borda muito sutil */
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  
+  /* O SEGREDO: Define que qualquer mudança de estilo levará 0.3 segundos para acontecer */
+  transition: all 0.3s ease-in-out; 
+}
+
+.efeito-glass-hover:hover {
+  background-color: rgba(255, 255, 255, 0.08); /* Fica ligeiramente mais claro */
+  border: 1px solid rgba(168, 85, 247, 0.4); /* Borda ganha cor (Ex: Roxo translúcido) */
+  box-shadow: 0 4px 20px rgba(168, 85, 247, 0.1); /* Um brilho suave atrás do cartão */
+}
+
+/* Base do modal principal adaptada com a mesma lógica translúcida clara */
+.cftv-glass-modal {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.01) 100%) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8) !important;
+  transition: all 0.3s ease-in-out !important;
+}
+
+.cftv-glass-modal:hover {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%) !important;
+  border: 1px solid rgba(0, 243, 255, 0.4) !important; /* Brilho ciano no hover do modal */
+  border-top: 1px solid rgba(0, 243, 255, 0.6) !important;
+  border-left: 1px solid rgba(0, 243, 255, 0.6) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8), 0 4px 20px rgba(0, 243, 255, 0.15) !important;
+}
+
+.cftv-modal-wrapper {
+  width: 100%;
+  margin-left: 1rem;
+  margin-right: 1rem;
+  margin-top: auto;
+  margin-bottom: auto;
+  max-height: 90vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.cftv-modal-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+.cftv-modal-wrapper-sm {
+  max-width: 24rem;
+}
+
+.cftv-modal-wrapper-md {
+  max-width: 36rem;
+}
+
+.cftv-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cftv-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-tactical);
+  font-weight: 700;
+  font-size: 0.875rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cftv-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.cftv-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+

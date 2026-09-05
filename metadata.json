@@ -1,0 +1,6 @@
+{
+  "name": "Nexus RTSP - Monitor de Câmeras",
+  "description": "Sistema de monitoramento e streaming RTSP para câmeras de segurança com backend Node.js e FFmpeg otimizado para Google Cloud Run e cliente Electron para Windows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
