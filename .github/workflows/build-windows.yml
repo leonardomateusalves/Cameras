@@ -20,7 +20,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install Dependencies
@@ -30,16 +30,20 @@ jobs:
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path bin
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
           Invoke-WebRequest -Uri "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.8/go2rtc_win64.zip" -OutFile "bin/go2rtc.zip"
           Expand-Archive -Path "bin/go2rtc.zip" -DestinationPath "bin" -Force
-          Remove-Item -Path "bin/go2rtc.zip"
+          Remove-Item -Path "bin/go2rtc.zip" -Force
+          if (Test-Path "bin/go2rtc_win64.exe") {
+            Copy-Item -Path "bin/go2rtc_win64.exe" -Destination "bin/go2rtc.exe" -Force
+          }
           Get-ChildItem -Path bin
 
       - name: Build React Frontend
         run: npm run build
 
       - name: Package Windows EXE with Electron Builder
-        run: npx electron-builder --win --x64
+        run: npx electron-builder --win --x64 -p never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -48,6 +52,6 @@ jobs:
         with:
           name: Nexus-RTSP-Monitor-Windows-x64
           path: |
-            dist/*.exe
-            dist/*.blockmap
+            release/*.exe
+            release/*.blockmap
           if-no-files-found: error
