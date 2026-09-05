@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -165,7 +165,7 @@ function startLocalBackend() {
     const { app: expressApp, registerAllStreamsWithGo2Rtc, startAutomaticDiscoverySequence, initWebSocket } = require('./backend/app');
     expressServer = expressApp.listen(BACKEND_PORT, '127.0.0.1', () => {
       console.log(`[Electron Main] Agente Local Express rodando em http://127.0.0.1:${BACKEND_PORT}`);
-      setTimeout(registerAllStreamsWithGo2Rtc, 1500);
+      // setTimeout(registerAllStreamsWithGo2Rtc, 1500); // Comentado para habilitar somente streaming sob demanda ("lazy stream")
       setTimeout(startAutomaticDiscoverySequence, 2000);
     });
 
@@ -194,6 +194,7 @@ function createWindow() {
     minHeight: 600,
     title: 'Nexus RTSP Monitor - CFTV P2P',
     backgroundColor: '#030712',
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -201,6 +202,9 @@ function createWindow() {
       webSecurity: true
     }
   });
+
+  mainWindow.setMenu(null);
+  Menu.setApplicationMenu(null);
 
   // Renderer process diagnostics
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
@@ -235,6 +239,24 @@ function createWindow() {
 
 // Setup IPC Handlers
 function setupIpcHandlers() {
+  ipcMain.on('window-minimize', () => {
+    if (mainWindow) mainWindow.minimize();
+  });
+
+  ipcMain.on('window-maximize', () => {
+    if (mainWindow) {
+      if (mainWindow.isMaximized()) {
+        mainWindow.unmaximize();
+      } else {
+        mainWindow.maximize();
+      }
+    }
+  });
+
+  ipcMain.on('window-close', () => {
+    if (mainWindow) mainWindow.close();
+  });
+
   ipcMain.handle('send-webrtc-sdp', async (event, { streamId, sdp }) => {
     return new Promise((resolve) => {
       const url = new URL('/api/webrtc', BACKEND_URL);

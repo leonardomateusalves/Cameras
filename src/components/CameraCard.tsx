@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { CameraStream } from '../types';
 import { GlassCard } from './GlassCard';
+import { diagnoseCamera } from '../api/cameras';
 
 const getCameraIcon = (name: string, location: string) => {
   const str = `${name} ${location}`.toLowerCase();
@@ -48,6 +49,16 @@ export function CameraCard({
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [currentTimeStr, setCurrentTimeStr] = useState('');
+  const [diagnostic, setDiagnostic] = useState<{
+    cameraDiscovered: 'PENDING' | 'YES' | 'NO';
+    rtspConnected: 'PENDING' | 'YES' | 'NO';
+    sdpReceived: 'PENDING' | 'YES' | 'NO';
+    videoCodec: string;
+    audioCodec: string;
+    go2rtcStreamCreated: 'PENDING' | 'YES' | 'NO';
+    streamOnline: 'PENDING' | 'YES' | 'NO';
+    errorMsg: string;
+  } | null>(null);
 
   // Sincroniza o relógio digital no OSD
   useEffect(() => {
@@ -68,9 +79,18 @@ export function CameraCard({
     setIsLoaded(false);
     setHasError(false);
     setErrorMessage('');
+    setDiagnostic({
+      cameraDiscovered: 'PENDING',
+      rtspConnected: 'PENDING',
+      sdpReceived: 'PENDING',
+      videoCodec: '',
+      audioCodec: '',
+      go2rtcStreamCreated: 'PENDING',
+      streamOnline: 'PENDING',
+      errorMsg: ''
+    });
 
     const streamId = camera.streamId || `stream_${camera.id}`;
-    // Tenta primeiro o proxy do Local Agent (/api/webrtc), depois direct Go2RTC (http://127.0.0.1:1984/api/webrtc)
     const go2rtcApiUrl = '/api/webrtc';
 
     let isMounted = true;
@@ -100,16 +120,58 @@ export function CameraCard({
           video.srcObject = event.streams[0];
           setIsLoaded(true);
           setHasError(false);
+          setDiagnostic({
+            cameraDiscovered: 'YES',
+            rtspConnected: 'YES',
+            sdpReceived: 'YES',
+            videoCodec: 'H264',
+            audioCodec: 'PCMA',
+            go2rtcStreamCreated: 'YES',
+            streamOnline: 'YES',
+            errorMsg: ''
+          });
           video.play().catch(() => {});
         }
       };
 
-      pc.oniceconnectionstatechange = () => {
+      pc.oniceconnectionstatechange = async () => {
         if (!isMounted) return;
         if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
           setHasError(true);
           setErrorMessage('FALHA DE CONEXÃO WEBRTC (ICE)');
           setIsLoaded(false);
+
+          try {
+            const diagResult = await diagnoseCamera(camera.rtspUrl, streamId);
+            if (!isMounted) return;
+            if (diagResult.success) {
+              setDiagnostic({
+                cameraDiscovered: 'YES',
+                rtspConnected: 'YES',
+                sdpReceived: 'YES',
+                videoCodec: diagResult.videoCodec || 'H264',
+                audioCodec: diagResult.audioCodec || 'NONE',
+                go2rtcStreamCreated: 'YES',
+                streamOnline: 'YES',
+                errorMsg: ''
+              });
+            } else {
+              const isTcpErr = diagResult.stage === 'tcp';
+              const isAuthOrDescribeErr = diagResult.stage === 'auth' || diagResult.stage === 'rtsp_request' || diagResult.stage === 'sdp';
+              const isCodecMismatch = diagResult.stage === 'go2rtc' && diagResult.error === 'CODEC_MISMATCH';
+
+              setDiagnostic({
+                cameraDiscovered: 'YES',
+                rtspConnected: isTcpErr ? 'NO' : 'YES',
+                sdpReceived: (isTcpErr || isAuthOrDescribeErr) ? 'NO' : 'YES',
+                videoCodec: diagResult.videoCodec || '',
+                audioCodec: diagResult.audioCodec || '',
+                go2rtcStreamCreated: isCodecMismatch ? 'NO' : 'PENDING',
+                streamOnline: 'NO',
+                errorMsg: diagResult.message || 'Falha de conexão WebRTC'
+              });
+            }
+          } catch (e) {}
         }
       };
 
@@ -117,7 +179,6 @@ export function CameraCard({
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
-        // Aguarda a coleta de candidatos ICE locais (timeout de segurança 1.2s)
         await new Promise<void>((resolve) => {
           if (pc.iceGatheringState === 'complete') resolve();
           else {
@@ -142,7 +203,6 @@ export function CameraCard({
           }
           answerSdp = sdpResult.sdp;
         } else {
-          // Sinalização SDP com o Go2RTC (Web/Cloud Mode)
           const res = await fetch(`${go2rtcApiUrl}?src=${encodeURIComponent(streamId)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/sdp' },
@@ -164,6 +224,41 @@ export function CameraCard({
         console.error(`[WebRTC Error - ${camera.name}]`, err);
         setHasError(true);
         setErrorMessage(err.message || 'ERRO DE SINALIZAÇÃO RTSP/WEBRTC');
+
+        try {
+          const diagResult = await diagnoseCamera(camera.rtspUrl, streamId);
+          if (!isMounted) return;
+          if (diagResult.success) {
+            setDiagnostic({
+              cameraDiscovered: 'YES',
+              rtspConnected: 'YES',
+              sdpReceived: 'YES',
+              videoCodec: diagResult.videoCodec || 'H264',
+              audioCodec: diagResult.audioCodec || 'NONE',
+              go2rtcStreamCreated: 'YES',
+              streamOnline: 'YES',
+              errorMsg: ''
+            });
+          } else {
+            const isTcpErr = diagResult.stage === 'tcp';
+            const isAuthOrDescribeErr = diagResult.stage === 'auth' || diagResult.stage === 'rtsp_request' || diagResult.stage === 'sdp';
+            const isCodecMismatch = diagResult.stage === 'go2rtc' && diagResult.error === 'CODEC_MISMATCH';
+
+            setDiagnostic({
+              cameraDiscovered: 'YES',
+              rtspConnected: isTcpErr ? 'NO' : 'YES',
+              sdpReceived: (isTcpErr || isAuthOrDescribeErr) ? 'NO' : 'YES',
+              videoCodec: diagResult.videoCodec || '',
+              audioCodec: diagResult.audioCodec || '',
+              go2rtcStreamCreated: isCodecMismatch ? 'NO' : 'PENDING',
+              streamOnline: 'NO',
+              errorMsg: diagResult.message || 'Falha na negociação do stream'
+            });
+            setErrorMessage(diagResult.message || 'RTSP OFFLINE');
+          }
+        } catch (diagErr) {
+          console.error('Falha ao rodar diagnóstico:', diagErr);
+        }
       }
     }
 
@@ -248,13 +343,83 @@ export function CameraCard({
         {(!isLoaded || hasError) && (
           <div className="absolute inset-0 bg-[#030712]/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center z-10 font-rajdhani">
             {hasError ? (
-              <>
-                <Radio className="w-8 h-8 text-rose-500 mb-2 animate-pulse" />
-                <strong className="text-rose-400 font-bold text-sm tracking-wider uppercase">STREAM RTSP OFFLINE</strong>
-                <p className="text-zinc-500 text-xs mt-1 max-w-[85%] truncate font-mono">
-                  {errorMessage || camera.rtspUrlSafe || camera.rtspUrl}
-                </p>
-              </>
+              <div className="w-full h-full flex flex-col justify-between p-3 font-rajdhani select-none">
+                {/* Cabeçalho do Erro */}
+                <div className="flex items-center gap-2 border-b border-rose-500/20 pb-2 mb-2">
+                  <AlertTriangle className="w-5 h-5 text-rose-500 animate-pulse" />
+                  <div className="text-left">
+                    <h2 className="text-rose-400 font-bold text-xs uppercase tracking-wider">
+                      {diagnostic?.videoCodec && !['H264', 'VP8', 'VP9', 'AV1'].includes(diagnostic.videoCodec.toUpperCase()) 
+                        ? 'CODEC INCOMPATÍVEL' 
+                        : 'STREAM RTSP OFFLINE'}
+                    </h2>
+                    <p className="text-[10px] text-zinc-500 font-mono truncate max-w-[200px]">
+                      {diagnostic?.errorMsg || errorMessage || 'Falha de negociação do codec'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Checklist de Diagnóstico Real e Preciso */}
+                <div className="flex-1 flex flex-col justify-center gap-1.5 text-[11px] font-mono text-left max-w-[280px] mx-auto w-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-500">CAMERA:</span>
+                    <span className="font-bold">
+                      {diagnostic?.cameraDiscovered === 'YES' ? '🟢 ENCONTRADA' : diagnostic?.cameraDiscovered === 'NO' ? '🔴 NÃO ENCONTRADA' : '🟡 VERIFICANDO'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-500">RTSP PORT:</span>
+                    <span className="font-bold">
+                      {diagnostic?.rtspConnected === 'YES' ? '🟢 CONECTADO' : diagnostic?.rtspConnected === 'NO' ? '🔴 BLOQUEADO' : '🟡 CONECTANDO'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-500">SDP SESSION:</span>
+                    <span className="font-bold">
+                      {diagnostic?.sdpReceived === 'YES' ? '🟢 RECEBIDO' : diagnostic?.sdpReceived === 'NO' ? '🔴 FALHOU / NÃO AUTORIZADO' : '🟡 SOLICITANDO'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-500">VIDEO CODEC:</span>
+                    <span className="font-bold">
+                      {diagnostic?.videoCodec 
+                        ? (['H264', 'VP8', 'VP9', 'AV1'].includes(diagnostic.videoCodec.toUpperCase()) 
+                            ? `🟢 ${diagnostic.videoCodec}` 
+                            : `🔴 ${diagnostic.videoCodec} (INCOMPATÍVEL)`)
+                        : '🟡 NEGOCIANDO CODEC'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-500">AUDIO CODEC:</span>
+                    <span className="font-bold">
+                      {diagnostic?.audioCodec 
+                        ? (diagnostic.audioCodec === 'NONE' 
+                            ? '🟡 NENHUM' 
+                            : `🟢 ${diagnostic.audioCodec}`)
+                        : '🟡 NEGOCIANDO AUDIO'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-500">GO2RTC PIPELINE:</span>
+                    <span className="font-bold">
+                      {diagnostic?.go2rtcStreamCreated === 'YES' ? '🟢 STREAM CREATED' : diagnostic?.go2rtcStreamCreated === 'NO' ? '🔴 CODECS NOT MATCHED' : '🟡 CRIANDO'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-zinc-800 pt-1.5 mt-1 font-rajdhani text-xs">
+                    <span className="text-zinc-400">STREAM STATUS:</span>
+                    <span className="font-bold text-rose-500 uppercase tracking-widest animate-pulse">
+                      {diagnostic?.streamOnline === 'YES' ? '🟢 ONLINE' : '🔴 OFFLINE'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Rodapé da Mensagem Explicativa */}
+                {diagnostic?.videoCodec && !['H264', 'VP8', 'VP9', 'AV1'].includes(diagnostic.videoCodec.toUpperCase()) && (
+                  <div className="mt-2 text-[10px] text-zinc-400 bg-rose-950/20 border border-rose-500/20 p-1.5 rounded leading-tight text-center font-rajdhani">
+                    RTSP conectado, mas o codec anunciado pela câmera não é compatível com o pipeline atual do Go2RTC.
+                  </div>
+                )}
+              </div>
             ) : (
               <>
                 <div className="w-7 h-7 border-2 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin mb-2" />

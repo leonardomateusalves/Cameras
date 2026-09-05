@@ -629,8 +629,7 @@ select option {
 .cftv-terminal-hud {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0.5rem;
-  font-size: 10px;
+  gap: 0.625rem;
   font-family: monospace;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -644,9 +643,10 @@ select option {
 
 .cftv-terminal-hud-item {
   display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0.625rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding: 0.5rem 0.75rem;
   background-color: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 4px;
@@ -656,39 +656,50 @@ select option {
   color: #71717a;
   font-family: var(--font-tactical);
   font-weight: 700;
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
 }
 
 .cftv-terminal-logbox {
-  background-color: rgba(0, 0, 0, 0.75);
+  background-color: rgba(0, 0, 0, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 0.875rem;
-  font-family: monospace;
-  font-size: 10px;
-  color: #d4d4d8;
-  line-height: 1.6;
+  padding: 0.5rem;
+  font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+  font-size: 0.825rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: #e4e4e7;
+  line-height: 1.5;
   overflow-y: auto;
-  max-height: 140px;
+  max-height: 240px;
   border-radius: 4px;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0px;
 }
 
 .cftv-terminal-log-row {
   display: flex;
-  gap: 0.5rem;
-  align-items: start;
-  padding: 0.125rem 0.25rem;
-  border-radius: 2px;
-  transition: background-color 0.15s ease;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  transition: all 0.15s ease;
+}
+
+.cftv-terminal-log-row:last-child {
+  border-bottom: none;
 }
 
 .cftv-terminal-log-row:hover {
-  background-color: rgba(255, 255, 255, 0.04);
+  background-color: rgba(0, 243, 255, 0.04);
 }
 
 .cftv-terminal-timestamp {
-  color: #52525b;
+  color: #71717a;
+  font-weight: 600;
+  font-size: 0.75rem;
+  min-width: 65px;
   user-select: none;
 }
 
@@ -712,15 +723,24 @@ select option {
 
 .cftv-status-online {
   color: #34d399 !important; /* emerald-400 */
+  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
 .cftv-status-pending {
   color: #fbbf24 !important; /* amber-400 */
+  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
 .cftv-status-scanning {
   color: #22d3ee !important; /* cyan-400 */
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
 .cftv-terminal-empty-logs {
@@ -731,12 +751,21 @@ select option {
 }
 
 .cftv-terminal-log-prefix {
-  font-weight: bold;
+  font-weight: 700;
+  font-size: 0.75rem;
+  min-width: 80px;
+  display: inline-block;
+  letter-spacing: 0.05em;
 }
 
 .cftv-terminal-log-message {
   color: #f4f4f5;
   flex: 1 1 0%;
+  font-size: 0.825rem;
+  font-weight: 500;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Cores dos prefixos do log */
@@ -762,5 +791,66 @@ select option {
 
 .cftv-log-error {
   color: #f87171 !important; /* red */
+}
+
+/* ============================================================================
+ * 23. BARRA DE TÍTULO CUSTOMIZADA (NEXUS TITLEBAR)
+ * ============================================================================ */
+.nexus-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 38px;
+  background-color: rgba(3, 7, 18, 0.98);
+  border-bottom: 1px solid rgba(0, 243, 255, 0.12);
+  padding: 0 14px;
+  -webkit-app-region: drag;
+  user-select: none;
+  z-index: 9999;
+  position: relative;
+}
+
+.nexus-titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.nexus-titlebar-center {
+  font-family: var(--font-tactical);
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  opacity: 0.6;
+}
+
+.nexus-titlebar-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.nexus-titlebar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  transition: all 150ms ease;
+  cursor: pointer;
+  outline: none;
+}
+
+.nexus-titlebar-btn:hover {
+  background-color: rgba(0, 243, 255, 0.08);
+  border-color: rgba(0, 243, 255, 0.15);
+}
+
+.nexus-titlebar-btn:active {
+  transform: scale(0.95);
 }
 

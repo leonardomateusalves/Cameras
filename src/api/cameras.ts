@@ -17,8 +17,26 @@ declare global {
   }
 }
 
-// Central API Base path using relative URL to support same-origin fullstack Express server
-const getApiBase = () => '/api/cameras';
+// Global detection state for the physical Local Agent running on Windows (port 8080)
+let detectedAgentBase = '';
+
+export function getAgentBaseUrl() {
+  if (window.electronAPI) {
+    return 'http://127.0.0.1:8080';
+  }
+  if (detectedAgentBase) {
+    return detectedAgentBase;
+  }
+  const savedBase = localStorage.getItem('detected_agent_base');
+  if (savedBase) {
+    detectedAgentBase = savedBase;
+    return savedBase;
+  }
+  return '';
+}
+
+// Central API Base path using the detected Local Agent Base URL (e.g. http://127.0.0.1:8080/api/cameras)
+const getApiBase = () => `${getAgentBaseUrl()}/api/cameras`;
 
 export interface HealthStatus {
   online: boolean;
@@ -29,7 +47,7 @@ export interface HealthStatus {
 }
 
 /**
- * Health check real do Agente Local / Backend Express
+ * Health check real do Agente Local / Backend Express com auto-detecção CORS do Windows local
  */
 export async function checkHealth(): Promise<HealthStatus> {
   const correlationId = 'HEALTH-CHK';
@@ -45,10 +63,38 @@ export async function checkHealth(): Promise<HealthStatus> {
     }
   }
 
+  // Se estiver rodando no navegador convencional (Web Cloud), tenta descobrir ativamente o Agente do Windows no 127.0.0.1:8080
   try {
-    logger.info('API', 'GET /api/health', correlationId);
-    const res = await fetch('/api/health');
-    logger.info('API', `GET /api/health - Status: ${res.status}`, correlationId);
+    const localRes = await fetch('http://127.0.0.1:8080/api/health', {
+      method: 'GET',
+      mode: 'cors',
+      headers: { 'Access-Control-Request-Private-Network': 'true' } as any
+    });
+    if (localRes.ok) {
+      const data = await localRes.json();
+      if (data.status === 'ok') {
+        detectedAgentBase = 'http://127.0.0.1:8080';
+        localStorage.setItem('detected_agent_base', 'http://127.0.0.1:8080');
+        return {
+          online: true,
+          service: 'local-agent-cors',
+          go2rtcOnline: true,
+          camerasCount: 0
+        };
+      }
+    }
+  } catch (err) {
+    // Silencioso: se falhar o localhost, limpa o estado de detecção e tenta a rota relativa padrão
+    detectedAgentBase = '';
+    localStorage.removeItem('detected_agent_base');
+  }
+
+  // Fallback padrão relativo
+  try {
+    const url = `${getAgentBaseUrl()}/api/health`;
+    logger.info('API', `GET ${url}`, correlationId);
+    const res = await fetch(url);
+    logger.info('API', `GET ${url} - Status: ${res.status}`, correlationId);
     if (!res.ok) {
       logger.error('API', `Request falhou com status ${res.status}`, null, correlationId);
       return {
@@ -100,9 +146,6 @@ export async function discoverCameras() {
 export async function discoverCamerasFull() {
   const correlationId = 'ONVIF-FULL';
   let targetUrl = `${getApiBase()}/discover/full`;
-  if (window.electronAPI) {
-    targetUrl = `http://127.0.0.1:8080/api/cameras/discover/full`;
-  }
 
   try {
     logger.info('API', `POST ${targetUrl}`, correlationId);
@@ -144,6 +187,28 @@ export async function testCamera(rtspUrl: string) {
   } catch (err: any) {
     logger.error('API', `POST ${getApiBase()}/test - Erro de rede`, err, correlationId);
     return { success: false, status: 'RTSP_NETWORK_ERROR', message: `Failed to fetch: ${err.message}` };
+  }
+}
+
+export async function diagnoseCamera(rtspUrl: string, streamId?: string) {
+  const correlationId = 'RTSP-DIAG';
+  let targetUrl = `${getApiBase()}/diagnose`;
+
+  try {
+    logger.info('API', `POST ${targetUrl}`, correlationId);
+    const res = await fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rtspUrl, streamId })
+    });
+    logger.info('API', `POST ${targetUrl} - Status: ${res.status}`, correlationId);
+    if (!res.ok) {
+      return { success: false, stage: 'api', error: 'API_ERROR', message: `Erro HTTP ${res.status}` };
+    }
+    return res.json();
+  } catch (err: any) {
+    logger.error('API', `POST ${targetUrl} - Erro de rede`, err, correlationId);
+    return { success: false, stage: 'network', error: 'NETWORK_ERROR', message: err.message };
   }
 }
 
@@ -228,9 +293,10 @@ export async function getDiscoveryStatus() {
   }
 
   try {
-    logger.info('API', 'GET /api/discovery-status', correlationId);
-    const res = await fetch('/api/discovery-status');
-    logger.info('API', `GET /api/discovery-status - Status: ${res.status}`, correlationId);
+    const url = `${getAgentBaseUrl()}/api/discovery-status`;
+    logger.info('API', `GET ${url}`, correlationId);
+    const res = await fetch(url);
+    logger.info('API', `GET ${url} - Status: ${res.status}`, correlationId);
     if (!res.ok) {
       logger.error('API', 'GET status de descoberta falhou', null, correlationId);
       throw new Error('Falha ao obter status de descoberta');

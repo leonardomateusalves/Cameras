@@ -188,13 +188,19 @@ function initWebSocket(server) {
 
     ws.on('message', (message) => {
       const text = message.toString();
-      logger.info('WS][RX', text);
+      let displayMsg = text;
+      try {
+        const parsed = JSON.parse(text);
+        displayMsg = JSON.stringify(parsed, null, 2);
+      } catch (e) {}
+      logger.info('WS][RX', displayMsg);
       try {
         const parsed = JSON.parse(text);
         if (parsed.type === 'ping') {
-          const pongMsg = JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() });
+          const pongData = { type: 'pong', timestamp: new Date().toISOString() };
+          const pongMsg = JSON.stringify(pongData);
           ws.send(pongMsg);
-          logger.info('WS][TX', pongMsg);
+          logger.info('WS][TX', JSON.stringify(pongData, null, 2));
         }
       } catch (e) {}
     });
@@ -364,7 +370,16 @@ app.use((req, res, next) => {
   const originalJson = res.json;
   res.json = function (body) {
     const duration = Date.now() - start;
-    logger.info('API', `Response ${res.statusCode} in ${duration}ms | Payload: ${JSON.stringify(body).substring(0, 200)}`, correlationId);
+    let payloadStr = '';
+    try {
+      payloadStr = JSON.stringify(body, null, 2);
+      if (payloadStr.length > 500) {
+        payloadStr = payloadStr.substring(0, 500) + '\n... (trunced)';
+      }
+    } catch (e) {
+      payloadStr = String(body);
+    }
+    logger.info('API', `Response ${res.statusCode} in ${duration}ms | Payload:\n${payloadStr}`, correlationId);
     return originalJson.apply(this, arguments);
   };
 
@@ -484,7 +499,7 @@ async function startAutomaticDiscoverySequence(customCorrelationId = '') {
   // Configuração dos estados corretos de acordo com a disponibilidade da LAN física
   if (!hasPhysicalLanAccess) {
     discoveryState.networkStatus = '🔴 OFFLINE';
-    discoveryState.discoveryStatus = '🔴 BLOCKED / NO PHYSICAL LAN ACCESS';
+    discoveryState.discoveryStatus = '🔴 BLOQUEADO (SEM LAN)';
     
     logger.info('DISCOVERY', 'Ambiente atual não possui acesso direto à rede LAN física. A descoberta real de câmeras será executada somente no Windows Desktop/EXE.', correlationId);
     logger.error('DISCOVERY', 'Physical LAN access unavailable in current runtime', null, correlationId);
@@ -493,7 +508,7 @@ async function startAutomaticDiscoverySequence(customCorrelationId = '') {
       type: 'agent_status_raw',
       agentStatus: '🟢 ONLINE',
       networkStatus: '🔴 OFFLINE',
-      discoveryStatus: '🔴 BLOCKED / NO PHYSICAL LAN ACCESS'
+      discoveryStatus: '🔴 BLOQUEADO (SEM LAN)'
     });
     return;
   }
@@ -533,6 +548,9 @@ async function startAutomaticDiscoverySequence(customCorrelationId = '') {
 
       logger.info('ONVIF', `Device response received from ${hostname}`, correlationId);
       logger.info('CAMERA', `Camera discovered - IP: ${hostname} | Hostname: ${device.name || 'ONVIF-Device'} | Protocol: ONVIF | Fabricante: ${device.urn || 'Fabricante ONVIF'} | Portas: 80, 554 | Origem: WS-Discovery`, correlationId);
+
+      console.log(`[DISCOVERY] Camera found: ${hostname}`);
+      logger.info('DISCOVERY', `Camera found: ${hostname}`, correlationId);
 
       broadcast({
         type: 'camera_found',
@@ -594,18 +612,25 @@ async function startAutomaticDiscoverySequence(customCorrelationId = '') {
         if (!cfg.cameras.some(c => c.id === cam.id)) {
           cfg.cameras.push(cam);
           addedAny = true;
+          console.log(`[DISCOVERY] Camera added: ${cam.id}`);
+          logger.info('DISCOVERY', `Camera added: ${cam.id}`, correlationId);
         }
       }
       if (addedAny) {
         saveConfig(cfg);
-        await registerAllStreamsWithGo2Rtc();
       }
+
+      console.log(`[DISCOVERY] Total cameras: ${cfg.cameras.length}`);
+      logger.info('DISCOVERY', `Total cameras: ${cfg.cameras.length}`, correlationId);
 
       discoveryState.devicesCount = cfg.cameras.length;
       discoveryState.discoveryStatus = `🟢 ${cfg.cameras.length} DISPOSITIVOS ENCONTRADOS`;
       logger.info('DISCOVERY', `Auto-discovery finished. ${foundCameras.length} cameras synchronized.`, correlationId);
     } else {
       const cfg = loadConfig();
+      console.log(`[DISCOVERY] Total cameras: ${cfg.cameras.length}`);
+      logger.info('DISCOVERY', `Total cameras: ${cfg.cameras.length}`, correlationId);
+
       if (cfg.cameras.length > 0) {
         discoveryState.devicesCount = cfg.cameras.length;
         discoveryState.discoveryStatus = `🟢 ${cfg.cameras.length} DISPOSITIVOS ENCONTRADOS`;
@@ -719,6 +744,30 @@ app.get('/api/agent/status', (req, res) => {
   });
 });
 
+// Helper for on-demand stream registration with Go2RTC
+async function registerSingleStreamWithGo2Rtc(streamId) {
+  const cfg = loadConfig();
+  const cam = cfg.cameras.find(c => c.streamId === streamId || c.id === streamId);
+  if (!cam || !cam.rtspUrl) {
+    console.warn(`[Go2RTC Adapter] Câmera não encontrada para o streamId: ${streamId}`);
+    return false;
+  }
+  try {
+    console.log(`[CAMERA] Selected: ${cam.id}`);
+    console.log(`[RTSP] Starting connection`);
+    console.log(`[GO2RTC] Starting selected stream: ${cam.streamId}`);
+    
+    await fetch(`${GO2RTC_API}/streams?name=${encodeURIComponent(cam.streamId)}&src=${encodeURIComponent(cam.rtspUrl)}`, {
+      method: 'PUT'
+    });
+    console.log(`[Go2RTC Adapter] Stream '${cam.streamId}' registrado dinamicamente.`);
+    return true;
+  } catch (err) {
+    console.error(`[Go2RTC Adapter] Erro ao registrar stream dinamicamente: ${err.message}`);
+    return false;
+  }
+}
+
 // Proxy para WebRTC SDP no Go2RTC (Evita CORS / Mixed Content no frontend)
 app.post('/api/webrtc', async (req, res) => {
   const { src } = req.query;
@@ -726,6 +775,9 @@ app.post('/api/webrtc', async (req, res) => {
     return res.status(400).send('O parâmetro src é obrigatório');
   }
   try {
+    // Registra a câmera selecionada sob demanda ("lazy load") no Go2RTC
+    await registerSingleStreamWithGo2Rtc(String(src));
+
     const sdpBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
     const go2rtcRes = await fetch(`${GO2RTC_API}/webrtc?src=${encodeURIComponent(String(src))}`, {
       method: 'POST',
@@ -833,7 +885,7 @@ app.post('/api/cameras/discover/full', async (req, res) => {
   // Redefinir status no backend para os indicados exatamente de acordo com as regras solicitadas
   discoveryState.agentStatus = '🟢 ONLINE';
   discoveryState.networkStatus = networkAccess === 'AVAILABLE' ? '🟢 ONLINE' : '🔴 OFFLINE';
-  discoveryState.discoveryStatus = networkAccess === 'AVAILABLE' ? '🟢 READY' : '🔴 BLOCKED / NO PHYSICAL LAN ACCESS';
+  discoveryState.discoveryStatus = networkAccess === 'AVAILABLE' ? '🟢 READY' : '🔴 BLOQUEADO (SEM LAN)';
 
   // Broadcast novos status via WebSocket imediatamente
   broadcast({
@@ -928,6 +980,271 @@ function testTcpConnection(host, port, timeoutMs = 3000) {
   });
 }
 
+function parseRtspUrl(rtspUrl) {
+  try {
+    const parsed = new URL(rtspUrl);
+    return {
+      hostname: parsed.hostname,
+      port: parseInt(parsed.port || '554', 10),
+      username: parsed.username ? decodeURIComponent(parsed.username) : '',
+      password: parsed.password ? decodeURIComponent(parsed.password) : '',
+      path: parsed.pathname + parsed.search
+    };
+  } catch (e) {
+    const match = rtspUrl.match(/rtsp:\/\/([^:]+):([^@]+)@([^:/]+)(?::(\d+))?(\/.*)/);
+    if (match) {
+      return {
+        username: match[1],
+        password: match[2],
+        hostname: match[3],
+        port: parseInt(match[4] || '554', 10),
+        path: match[5]
+      };
+    }
+    return null;
+  }
+}
+
+function parseSdp(sdpText) {
+  const lines = sdpText.split(/\r?\n/);
+  let currentMedia = null;
+  let videoCodec = 'UNKNOWN';
+  let audioCodec = 'NONE';
+  const rtpMap = {};
+
+  for (const line of lines) {
+    if (line.startsWith('m=')) {
+      const parts = line.substring(2).split(' ');
+      currentMedia = parts[0]; // 'video' ou 'audio'
+    } else if (line.startsWith('a=rtpmap:')) {
+      const match = line.match(/^a=rtpmap:(\d+)\s+([^/]+)/i);
+      if (match) {
+        const payloadType = match[1];
+        const codecName = match[2].toUpperCase();
+        rtpMap[payloadType] = { media: currentMedia, codec: codecName };
+        if (currentMedia === 'video') {
+          if (videoCodec === 'UNKNOWN') videoCodec = codecName;
+        } else if (currentMedia === 'audio') {
+          if (audioCodec === 'NONE') audioCodec = codecName;
+        }
+      }
+    }
+  }
+
+  return { videoCodec, audioCodec };
+}
+
+function md5(str) {
+  return crypto.createHash('md5').update(str).digest('hex');
+}
+
+function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
+  return new Promise((resolve) => {
+    const urlInfo = parseRtspUrl(rtspUrl);
+    if (!urlInfo) {
+      return resolve({
+        ok: false,
+        stage: 'parse',
+        error: 'INVALID_URL',
+        message: 'A URL RTSP fornecida possui um formato inválido.',
+        videoCodec: 'UNKNOWN',
+        audioCodec: 'NONE',
+        sdp: ''
+      });
+    }
+
+    const { hostname, port, username, password, path } = urlInfo;
+    const safeUrl = `rtsp://${username ? '***:***@' : ''}${hostname}:${port}${path}`;
+    
+    logger.info('RTSP', `Iniciando diagnóstico para ${safeUrl}`, correlationId);
+    logger.info('RTSP][CONNECT', `Conectando via TCP em ${hostname}:${port}...`, correlationId);
+
+    const client = new net.Socket();
+    client.setTimeout(4000);
+
+    let state = 'CONNECTING'; 
+    let buffer = '';
+    let cseq = 1;
+    let wwwAuthHeader = '';
+
+    const cleanAndResolve = (result) => {
+      client.destroy();
+      resolve(result);
+    };
+
+    client.connect(port, hostname, () => {
+      state = 'CONNECTED';
+      logger.info('RTSP][CONNECT', '🟢 Conexão TCP estabelecida com sucesso.', correlationId);
+      
+      const optionsReq = `OPTIONS ${rtspUrl} RTSP/1.0\r\nCSeq: ${cseq++}\r\nUser-Agent: NexusRTSP/2.4.0\r\n\r\n`;
+      state = 'OPTIONS_SENT';
+      logger.info('RTSP', `OPTIONS enviado (CSeq: ${cseq-1})`, correlationId);
+      client.write(optionsReq);
+    });
+
+    client.on('data', (data) => {
+      buffer += data.toString();
+
+      if (buffer.includes('\r\n\r\n')) {
+        const parts = buffer.split('\r\n\r\n');
+        const headerBlock = parts[0];
+        const lines = headerBlock.split('\r\n');
+        const statusLine = lines[0]; 
+        
+        logger.info('RTSP', `Status recebido: ${statusLine}`, correlationId);
+
+        const headers = {};
+        for (let i = 1; i < lines.length; i++) {
+          const colonIdx = lines[i].indexOf(':');
+          if (colonIdx > 0) {
+            const key = lines[i].substring(0, colonIdx).trim().toLowerCase();
+            const val = lines[i].substring(colonIdx + 1).trim();
+            headers[key] = val;
+          }
+        }
+
+        if (statusLine.includes(' 200 ')) {
+          if (state === 'OPTIONS_SENT') {
+            buffer = buffer.substring(headerBlock.length + 4); 
+
+            const describeReq = `DESCRIBE ${rtspUrl} RTSP/1.0\r\nCSeq: ${cseq++}\r\nAccept: application/sdp\r\nUser-Agent: NexusRTSP/2.4.0\r\n\r\n`;
+            state = 'DESCRIBE_SENT';
+            logger.info('RTSP][DESCRIBE', `DESCRIBE enviado (CSeq: ${cseq-1})`, correlationId);
+            client.write(describeReq);
+          } else if (state === 'DESCRIBE_SENT' || state === 'DESCRIBE_AUTH_SENT') {
+            logger.info('RTSP][DESCRIBE', '🟢 DESCRIBE retornado com sucesso 200 OK.', correlationId);
+            
+            const contentLength = parseInt(headers['content-length'] || '0', 10);
+            const remainingBody = parts.slice(1).join('\r\n\r\n');
+
+            if (remainingBody.length >= contentLength) {
+              const sdpText = remainingBody.substring(0, contentLength);
+              logger.info('RTSP][SDP', `🟢 SDP Recebido (${contentLength} bytes):\n${sdpText}`, correlationId);
+
+              const { videoCodec, audioCodec } = parseSdp(sdpText);
+              logger.info('RTSP][VIDEO', `Vídeo detectado no SDP: ${videoCodec}`, correlationId);
+              logger.info('RTSP][AUDIO', `Áudio detectado no SDP: ${audioCodec}`, correlationId);
+
+              return cleanAndResolve({
+                ok: true,
+                stage: 'sdp',
+                videoCodec,
+                audioCodec,
+                sdp: sdpText,
+                message: 'RTSP Session connected and SDP negotiated successfully'
+              });
+            }
+          }
+        } else if (statusLine.includes(' 401 ')) {
+          wwwAuthHeader = headers['www-authenticate'] || '';
+
+          if (state === 'DESCRIBE_SENT' && wwwAuthHeader && username) {
+            buffer = buffer.substring(headerBlock.length + 4); 
+            
+            let authHeaderValue = '';
+            if (wwwAuthHeader.toLowerCase().includes('basic')) {
+              const credentials = Buffer.from(`${username}:${password}`).toString('base64');
+              authHeaderValue = `Basic ${credentials}`;
+              logger.info('RTSP][DESCRIBE', 'Enviando credenciais Basic Auth...', correlationId);
+            } else if (wwwAuthHeader.toLowerCase().includes('digest')) {
+              const realmMatch = wwwAuthHeader.match(/realm="([^"]+)"/i);
+              const nonceMatch = wwwAuthHeader.match(/nonce="([^"]+)"/i);
+              if (realmMatch && nonceMatch) {
+                const realm = realmMatch[1];
+                const nonce = nonceMatch[1];
+                const uri = rtspUrl;
+                
+                const HA1 = md5(`${username}:${realm}:${password}`);
+                const HA2 = md5(`DESCRIBE:${uri}`);
+                const response = md5(`${HA1}:${nonce}:${HA2}`);
+                
+                authHeaderValue = `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", response="${response}"`;
+                logger.info('RTSP][DESCRIBE', `Enviando credenciais Digest Auth (realm: ${realm})...`, correlationId);
+              }
+            }
+
+            if (authHeaderValue) {
+              const authenticatedDescribeReq = `DESCRIBE ${rtspUrl} RTSP/1.0\r\nCSeq: ${cseq++}\r\nAuthorization: ${authHeaderValue}\r\nAccept: application/sdp\r\nUser-Agent: NexusRTSP/2.4.0\r\n\r\n`;
+              state = 'DESCRIBE_AUTH_SENT';
+              client.write(authenticatedDescribeReq);
+            } else {
+              return cleanAndResolve({
+                ok: false,
+                stage: 'auth',
+                error: 'AUTH_METHOD_UNSUPPORTED',
+                message: 'Método de autenticação da câmera não suportado ou credenciais inválidas.',
+                videoCodec: 'UNKNOWN',
+                audioCodec: 'NONE',
+                sdp: ''
+              });
+            }
+          } else {
+            return cleanAndResolve({
+              ok: false,
+              stage: 'auth',
+              error: 'UNAUTHORIZED',
+              message: 'Falha de autenticação RTSP. Verifique usuário e senha.',
+              videoCodec: 'UNKNOWN',
+              audioCodec: 'NONE',
+              sdp: ''
+            });
+          }
+        } else {
+          return cleanAndResolve({
+            ok: false,
+            stage: 'rtsp_request',
+            error: 'RTSP_ERROR',
+            message: `Servidor RTSP retornou erro inesperado: ${statusLine}`,
+            videoCodec: 'UNKNOWN',
+            audioCodec: 'NONE',
+            sdp: ''
+          });
+        }
+      }
+    });
+
+    client.on('timeout', () => {
+      logger.info('RTSP', 'Conexão TCP esgotada (Timeout)', correlationId);
+      cleanAndResolve({
+        ok: false,
+        stage: 'tcp',
+        error: 'TIMEOUT',
+        message: 'Timeout ao conectar na porta RTSP (Câmera offline ou rede inacessível)',
+        videoCodec: 'UNKNOWN',
+        audioCodec: 'NONE',
+        sdp: ''
+      });
+    });
+
+    client.on('error', (err) => {
+      logger.info('RTSP', `Erro na conexão socket: ${err.message}`, correlationId);
+      cleanAndResolve({
+        ok: false,
+        stage: 'tcp',
+        error: 'CONNECTION_FAILED',
+        message: `Falha na conexão TCP: ${err.message}`,
+        videoCodec: 'UNKNOWN',
+        audioCodec: 'NONE',
+        sdp: ''
+      });
+    });
+  });
+}
+
+function checkWebRtcCodecSupport(videoCodec, audioCodec) {
+  const supportedVideos = ['H264', 'VP8', 'VP9', 'AV1'];
+  const isVideoSupported = supportedVideos.includes(videoCodec.toUpperCase());
+  
+  if (!isVideoSupported) {
+    return {
+      compatible: false,
+      error: 'CODEC_MISMATCH',
+      message: `RTSP conectado, mas o codec anunciado pela câmera (${videoCodec}) não é compatível com o pipeline atual do Go2RTC.`
+    };
+  }
+  return { compatible: true };
+}
+
 // 3. TESTE DE CONEXÃO RTSP COM VERIFICAÇÃO TCP REAL
 app.post('/api/cameras/test', async (req, res) => {
   const { rtspUrl } = req.body;
@@ -951,6 +1268,109 @@ app.post('/api/cameras/test', async (req, res) => {
       success: false, 
       status: 'RTSP_PARSE_ERROR', 
       message: 'Não foi possível extrair o host/porta da URL RTSP' 
+    });
+  }
+});
+
+// 3.1 ENDPOINT DE DIAGNÓSTICO AVANÇADO RTSP / GO2RTC
+app.post('/api/cameras/diagnose', async (req, res) => {
+  const { rtspUrl, streamId } = req.body;
+  const correlationId = 'REQ-DIAG-' + crypto.randomBytes(3).toString('hex').toUpperCase();
+
+  if (!rtspUrl || typeof rtspUrl !== 'string' || !rtspUrl.startsWith('rtsp://')) {
+    return res.status(400).json({
+      success: false,
+      stage: 'validate',
+      error: 'RTSP_SYNTAX_ERROR',
+      message: 'Sintaxe da URL RTSP inválida. Ex: rtsp://user:pass@ip:554/stream'
+    });
+  }
+
+  try {
+    const parsed = parseRtspUrl(rtspUrl);
+    if (!parsed) {
+      return res.json({
+        success: false,
+        stage: 'parse',
+        error: 'RTSP_PARSE_ERROR',
+        message: 'Não foi possível extrair o host/porta da URL RTSP'
+      });
+    }
+
+    const host = parsed.hostname;
+    const port = parsed.port;
+
+    logger.info('GO2RTC', `Iniciando diagnóstico completo para o stream ${streamId || 'test'}`, correlationId);
+    
+    // Etapa 1: Teste de porta TCP
+    const tcpResult = await testTcpConnection(host, port, 3000);
+    if (!tcpResult.success) {
+      logger.info('GO2RTC][ERROR', `Falha de conexão TCP na porta RTSP: ${tcpResult.message}`, correlationId);
+      return res.json({
+        success: false,
+        stage: 'tcp',
+        error: tcpResult.status,
+        message: tcpResult.message
+      });
+    }
+
+    // Etapa 2: RTSP Session & SDP Describe negotiation
+    const rtspResult = await runRtspDiagnostic(rtspUrl, correlationId);
+    if (!rtspResult.ok) {
+      logger.info('GO2RTC][ERROR', `Falha na negociação RTSP: ${rtspResult.message}`, correlationId);
+      return res.json({
+        success: false,
+        stage: rtspResult.stage,
+        error: rtspResult.error || 'RTSP_NEGOTIATION_FAILED',
+        message: rtspResult.message
+      });
+    }
+
+    // Etapa 3: Codec Compatibility Verification
+    const codecSupport = checkWebRtcCodecSupport(rtspResult.videoCodec, rtspResult.audioCodec);
+    if (!codecSupport.compatible) {
+      logger.info('GO2RTC][ERROR', `Incompatibilidade de Codec: ${codecSupport.message}`, correlationId);
+      logger.info('GO2RTC][CODECS', `Codecs anunciados -> Vídeo: ${rtspResult.videoCodec} | Áudio: ${rtspResult.audioCodec}`, correlationId);
+      return res.json({
+        success: false,
+        stage: 'go2rtc',
+        error: 'CODEC_MISMATCH',
+        message: codecSupport.message,
+        videoCodec: rtspResult.videoCodec,
+        audioCodec: rtspResult.audioCodec,
+        transport: 'tcp'
+      });
+    }
+
+    // Etapa 4: Registrar ou atualizar stream no Go2RTC
+    if (streamId) {
+      try {
+        await fetch(`${GO2RTC_API}/streams?name=${encodeURIComponent(streamId)}&src=${encodeURIComponent(rtspUrl)}`, {
+          method: 'PUT'
+        });
+        logger.info('GO2RTC', `Stream '${streamId}' registrado/atualizado no Go2RTC para diagnóstico.`, correlationId);
+      } catch (err) {
+        logger.warn('GO2RTC', `Aviso ao registrar stream no Go2RTC: ${err.message}`, correlationId);
+      }
+    }
+
+    res.json({
+      success: true,
+      stage: 'stream',
+      status: 'ONLINE',
+      message: 'Conexão RTSP e codecs totalmente compatíveis com o Go2RTC',
+      videoCodec: rtspResult.videoCodec,
+      audioCodec: rtspResult.audioCodec,
+      transport: 'tcp'
+    });
+
+  } catch (err) {
+    logger.info('GO2RTC][ERROR', `Erro interno durante diagnóstico: ${err.message}`, correlationId);
+    res.status(500).json({
+      success: false,
+      stage: 'internal',
+      error: 'DIAGNOSTIC_EXCEPTION',
+      message: `Erro interno no servidor: ${err.message}`
     });
   }
 });

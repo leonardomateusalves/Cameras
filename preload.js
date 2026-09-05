@@ -9,5 +9,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeCamera: (id) => ipcRenderer.invoke('remove-camera', id),
   getGo2RtcStatus: () => ipcRenderer.invoke('get-go2rtc-status'),
   sendWebrtcSdp: (streamId, sdp) => ipcRenderer.invoke('send-webrtc-sdp', { streamId, sdp }),
-  getDiscoveryStatus: () => ipcRenderer.invoke('get-discovery-status')
+  getDiscoveryStatus: () => ipcRenderer.invoke('get-discovery-status'),
+  minimize: () => ipcRenderer.send('window-minimize'),
+  maximize: () => ipcRenderer.send('window-maximize'),
+  close: () => ipcRenderer.send('window-close')
 });
