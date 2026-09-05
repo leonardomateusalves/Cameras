@@ -981,6 +981,8 @@ function testTcpConnection(host, port, timeoutMs = 3000) {
 }
 
 function parseRtspUrl(rtspUrl) {
+  if (!rtspUrl) return null;
+  
   try {
     const parsed = new URL(rtspUrl);
     return {
@@ -991,17 +993,42 @@ function parseRtspUrl(rtspUrl) {
       path: parsed.pathname + parsed.search
     };
   } catch (e) {
-    const match = rtspUrl.match(/rtsp:\/\/([^:]+):([^@]+)@([^:/]+)(?::(\d+))?(\/.*)/);
-    if (match) {
-      return {
-        username: match[1],
-        password: match[2],
-        hostname: match[3],
-        port: parseInt(match[4] || '554', 10),
-        path: match[5]
-      };
+    // Fallback para URLs que o URL() não aceita (RTSP com caracteres especiais no path ou senha)
+    const regex = /^rtsp:\/\/([^/]+)(.*)/i;
+    const match = rtspUrl.match(regex);
+    if (!match) return null;
+
+    const authority = match[1];
+    const path = match[2] || '/';
+    
+    let username = '';
+    let password = '';
+    let hostPort = authority;
+
+    if (authority.includes('@')) {
+      // Pega a última ocorrência de @ para separar credenciais do host
+      const lastAtIndex = authority.lastIndexOf('@');
+      const credentials = authority.substring(0, lastAtIndex);
+      hostPort = authority.substring(lastAtIndex + 1);
+      
+      const firstColonIndex = credentials.indexOf(':');
+      if (firstColonIndex >= 0) {
+        username = decodeURIComponent(credentials.substring(0, firstColonIndex));
+        password = decodeURIComponent(credentials.substring(firstColonIndex + 1));
+      } else {
+        username = decodeURIComponent(credentials);
+      }
     }
-    return null;
+
+    let hostname = hostPort;
+    let port = 554;
+    if (hostPort.includes(':')) {
+      const hpParts = hostPort.split(':');
+      hostname = hpParts[0];
+      port = parseInt(hpParts[1] || '554', 10);
+    }
+
+    return { hostname, port, username, password, path };
   }
 }
 
@@ -1055,13 +1082,15 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
 
     const { hostname, port, username, password, path } = urlInfo;
     const safeUrl = `rtsp://${username ? '***:***@' : ''}${hostname}:${port}${path}`;
-    const cleanRtspUrl = `rtsp://${hostname}:${port}${path}`;
+    
+    // Algumas câmeras são sensíveis ao porta 554 na URI do Digest. VLC geralmente omite se for padrão.
+    const cleanRtspUrl = port === 554 ? `rtsp://${hostname}${path}` : `rtsp://${hostname}:${port}${path}`;
     
     logger.info('RTSP', `Iniciando diagnóstico para ${safeUrl}`, correlationId);
     logger.info('RTSP][CONNECT', `Conectando via TCP em ${hostname}:${port}...`, correlationId);
 
     const client = new net.Socket();
-    client.setTimeout(4000);
+    client.setTimeout(8000);
 
     let state = 'CONNECTING'; 
     let buffer = '';
@@ -1142,7 +1171,11 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
             }
           }
         } else if (statusLine.includes(' 401 ')) {
-          wwwAuthHeader = headers['www-authenticate'] || '';
+          const authLines = lines.filter(l => l.toLowerCase().startsWith('www-authenticate:'));
+          // Prefere Digest se disponível
+          let selectedAuthLine = authLines.find(l => l.toLowerCase().includes('digest')) || authLines[0] || '';
+          wwwAuthHeader = selectedAuthLine.substring(selectedAuthLine.indexOf(':') + 1).trim();
+          
           logger.warn('RTSP][AUTH', `Câmera solicitou autenticação (401). Challenge: ${wwwAuthHeader}`, correlationId);
 
           if ((state === 'OPTIONS_SENT' || state === 'DESCRIBE_SENT') && wwwAuthHeader && username) {
@@ -1165,20 +1198,33 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
               const realm = getParam('realm');
               const nonce = getParam('nonce');
               const opaque = getParam('opaque');
+              const qopHeader = getParam('qop');
               
               if (realm && nonce) {
                 const uri = cleanRtspUrl;
+                const nc = '00000001';
+                const cnonce = crypto.randomBytes(8).toString('hex');
+                
+                // qop pode vir como "auth,auth-int". Devemos escolher um.
+                const useQop = qopHeader && qopHeader.split(',').map(s => s.trim()).includes('auth') ? 'auth' : null;
                 
                 const HA1 = md5(`${username}:${realm}:${password}`);
                 const HA2 = md5(`${method}:${uri}`);
-                const response = md5(`${HA1}:${nonce}:${HA2}`);
                 
-                authHeaderValue = `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", response="${response}"`;
-                if (opaque) {
-                  authHeaderValue += `, opaque="${opaque}"`;
+                let response;
+                if (useQop === 'auth') {
+                  response = md5(`${HA1}:${nonce}:${nc}:${cnonce}:${useQop}:${HA2}`);
+                } else {
+                  response = md5(`${HA1}:${nonce}:${HA2}`);
                 }
                 
-                logger.info('RTSP][AUTH', `Enviando credenciais Digest Auth para ${method} (realm: ${realm})...`, correlationId);
+                authHeaderValue = `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", response="${response}"`;
+                if (useQop) {
+                  authHeaderValue += `, qop=${useQop}, nc=${nc}, cnonce="${cnonce}"`;
+                }
+                if (opaque) authHeaderValue += `, opaque="${opaque}"`;
+                
+                logger.info('RTSP][AUTH', `Enviando credenciais Digest Auth para ${method} (realm: ${realm}, qop: ${useQop || 'none'})...`, correlationId);
               } else {
                 logger.error('RTSP][AUTH', 'Falha ao extrair parâmetros essenciais (realm/nonce) do Digest Auth Challenge', correlationId);
               }
@@ -1188,6 +1234,12 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
               const oldState = state;
               state = oldState === 'OPTIONS_SENT' ? 'OPTIONS_AUTH_SENT' : 'DESCRIBE_AUTH_SENT';
               sendRequest(method, cleanRtspUrl, authHeaderValue);
+            } else if (state === 'OPTIONS_SENT') {
+              // Se não conseguiu gerar authHeader para OPTIONS, tenta DESCRIBE direto
+              logger.warn('RTSP][AUTH', 'Falha ao gerar AuthHeader para OPTIONS. Tentando DESCRIBE...', correlationId);
+              buffer = buffer.substring(headerBlock.length + 4);
+              state = 'DESCRIBE_SENT';
+              sendRequest('DESCRIBE', cleanRtspUrl);
             } else {
               return cleanAndResolve({
                 ok: false,
@@ -1200,17 +1252,25 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
               });
             }
           } else {
-            // Se já tentamos autenticar e recebemos 401 de novo, as credenciais estão erradas
-            const isRetry = state === 'OPTIONS_AUTH_SENT' || state === 'DESCRIBE_AUTH_SENT';
-            return cleanAndResolve({
-              ok: false,
-              stage: 'auth',
-              error: isRetry ? 'INVALID_CREDENTIALS' : 'UNAUTHORIZED',
-              message: isRetry ? 'Usuário ou senha incorretos.' : 'Falha de autenticação RTSP. Verifique usuário e senha.',
-              videoCodec: 'UNKNOWN',
-              audioCodec: 'NONE',
-              sdp: ''
-            });
+            // Se já tentamos autenticar e recebemos 401 de novo
+            if (state === 'OPTIONS_AUTH_SENT') {
+               // Fallback: se OPTIONS com Auth falhou (mesmo com 401), tenta DESCRIBE direto
+               logger.warn('RTSP][AUTH', 'OPTIONS com Auth retornou 401 novamente. Tentando DESCRIBE como fallback...', correlationId);
+               buffer = buffer.substring(headerBlock.length + 4);
+               state = 'DESCRIBE_SENT';
+               sendRequest('DESCRIBE', cleanRtspUrl);
+            } else {
+               const isRetry = state === 'OPTIONS_AUTH_SENT' || state === 'DESCRIBE_AUTH_SENT';
+               return cleanAndResolve({
+                 ok: false,
+                 stage: 'auth',
+                 error: isRetry ? 'INVALID_CREDENTIALS' : 'UNAUTHORIZED',
+                 message: isRetry ? 'Usuário ou senha incorretos.' : 'Falha de autenticação RTSP. Verifique usuário e senha.',
+                 videoCodec: 'UNKNOWN',
+                 audioCodec: 'NONE',
+                 sdp: ''
+               });
+            }
           }
         } else {
           return cleanAndResolve({

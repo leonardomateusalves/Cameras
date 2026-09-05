@@ -326,6 +326,18 @@ export function CameraCard({
           <span className="text-[9px] sm:text-[10px] font-rajdhani font-bold text-zinc-400 uppercase tracking-widest">
             {camera.location}
           </span>
+          {onEdit && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(camera);
+              }}
+              className="p-1 hover:bg-amber-500/20 text-zinc-600 hover:text-amber-400 rounded transition-colors"
+              title="Configurações do Fluxo"
+            >
+              <Sliders className="w-3 h-3" />
+            </button>
+          )}
           {onDelete && (
             <button
               onClick={(e) => {

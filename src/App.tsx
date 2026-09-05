@@ -256,7 +256,13 @@ export default function App() {
   };
 
   const handleAddCamera = (newCam: CameraStream) => {
-    setCameras((prev) => [...prev, newCam]);
+    setCameras((prev) => {
+      const exists = prev.find(c => c.id === newCam.id);
+      if (exists) {
+        return prev.map(c => c.id === newCam.id ? newCam : c);
+      }
+      return [...prev, newCam];
+    });
     initAgentAndCameras();
   };
 

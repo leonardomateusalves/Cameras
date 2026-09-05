@@ -53,11 +53,75 @@ export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState,
   const [ptzEnabled, setPtzEnabled] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
 
+  // Split fields for better UX
+  const [user, setUser] = useState('');
+  const [password, setPassword] = useState('');
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState('554');
+  const [path, setPath] = useState('/live/ch0');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const parseUrlToFields = (url: string) => {
+    try {
+      if (!url) return;
+      // Regex para extrair componentes da URL RTSP
+      const regex = /^rtsp:\/\/([^/]+)(.*)/i;
+      const match = url.match(regex);
+      if (!match) return;
+
+      const authority = match[1];
+      const urlPath = match[2] || '/';
+      setPath(urlPath);
+      
+      let username = '';
+      let pass = '';
+      let hostPort = authority;
+
+      if (authority.includes('@')) {
+        const lastAtIndex = authority.lastIndexOf('@');
+        const credentials = authority.substring(0, lastAtIndex);
+        hostPort = authority.substring(lastAtIndex + 1);
+        
+        const firstColonIndex = credentials.indexOf(':');
+        if (firstColonIndex >= 0) {
+          username = decodeURIComponent(credentials.substring(0, firstColonIndex));
+          pass = decodeURIComponent(credentials.substring(firstColonIndex + 1));
+        } else {
+          username = decodeURIComponent(credentials);
+        }
+      }
+      setUser(username);
+      setPassword(pass);
+
+      if (hostPort.includes(':')) {
+        const hpParts = hostPort.split(':');
+        setHost(hpParts[0]);
+        setPort(hpParts[1] || '554');
+      } else {
+        setHost(hostPort);
+        setPort('554');
+      }
+    } catch (e) {
+      console.error('Erro ao parsear URL para campos:', e);
+    }
+  };
+
+  const syncFieldsToUrl = () => {
+    const encodedUser = encodeURIComponent(user);
+    const encodedPass = encodeURIComponent(password);
+    const auth = user ? `${encodedUser}${password ? `:${encodedPass}` : ''}@` : '';
+    const portStr = port && port !== '554' ? `:${port}` : '';
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    const newUrl = `rtsp://${auth}${host}${portStr}${cleanPath}`;
+    setRtspUrl(newUrl);
+  };
+
   useEffect(() => {
     if (isOpen && initialData) {
       setActiveTab('manual');
       setName(initialData.name);
       setRtspUrl(initialData.rtspUrl);
+      parseUrlToFields(initialData.rtspUrl);
       setLocation(initialData.location);
       setResolution(initialData.resolution || '1920x1080');
       setTransport(initialData.transport || 'tcp');
@@ -65,13 +129,26 @@ export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState,
     } else if (isOpen) {
       setName('');
       setRtspUrl('');
+      setUser('');
+      setPassword('');
+      setHost('');
+      setPort('554');
+      setPath('/live/ch0');
       setLocation('');
       setResolution('1920x1080');
       setTransport('tcp');
       setPtzEnabled(false);
       setActiveTab('scan');
+      setShowAdvanced(false);
     }
   }, [isOpen, initialData]);
+
+  // Sync back to URL whenever split fields change
+  useEffect(() => {
+    if (!showAdvanced && activeTab === 'manual') {
+      syncFieldsToUrl();
+    }
+  }, [user, password, host, port, path, showAdvanced, activeTab]);
 
   if (!isOpen) return null;
 
@@ -123,7 +200,25 @@ export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState,
 
     setIsTesting(true);
     try {
-      const testRes = await testCamera(rtspUrl.trim());
+      let finalRtspUrl = rtspUrl.trim();
+      
+      // Se estiver no modo simples, garante que a URL está sincronizada com os campos individuais
+      if (!showAdvanced) {
+        const encodedUser = encodeURIComponent(user);
+        const encodedPass = encodeURIComponent(password);
+        const auth = user ? `${encodedUser}${password ? `:${encodedPass}` : ''}@` : '';
+        const portStr = port && port !== '554' ? `:${port}` : '';
+        const cleanPath = path.startsWith('/') ? path : `/${path}`;
+        finalRtspUrl = `rtsp://${auth}${host}${portStr}${cleanPath}`;
+      }
+
+      if (!finalRtspUrl) {
+        alert('Por favor, preencha os campos da câmera ou a URL RTSP.');
+        setIsTesting(false);
+        return;
+      }
+
+      const testRes = await testCamera(finalRtspUrl);
       if (!testRes.success) {
         alert(`Erro na conexão: ${testRes.message}`);
         setIsTesting(false);
@@ -134,7 +229,7 @@ export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState,
         id: initialData?.id, // Manter o ID se for edição
         name: name.trim(),
         location: location.trim() || 'Setor Não Definido',
-        rtspUrl: rtspUrl.trim(),
+        rtspUrl: finalRtspUrl,
         resolution,
         ptzEnabled,
         transport
@@ -153,19 +248,22 @@ export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState,
   };
 
   const setPreset = (type: 'intelbras' | 'hikvision' | 'dahua' | 'tapo') => {
+    let url = '';
     if (type === 'intelbras') {
-      setRtspUrl('rtsp://admin:admin123@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0');
+      url = 'rtsp://admin:admin123@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0';
       setName('Câmera Intelbras HD');
     } else if (type === 'hikvision') {
-      setRtspUrl('rtsp://admin:senha123@192.168.1.64:554/Streaming/Channels/101');
+      url = 'rtsp://admin:senha123@192.168.1.64:554/Streaming/Channels/101';
       setName('Câmera Hikvision IP');
     } else if (type === 'dahua') {
-      setRtspUrl('rtsp://admin:admin123@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0');
+      url = 'rtsp://admin:admin123@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0';
       setName('Câmera Dahua Dome');
     } else if (type === 'tapo') {
-      setRtspUrl('rtsp://usuario:senha@192.168.1.50:554/stream1');
+      url = 'rtsp://usuario:senha@192.168.1.50:554/stream1';
       setName('TP-Link Tapo C200');
     }
+    setRtspUrl(url);
+    parseUrlToFields(url);
   };
 
   return (
@@ -304,9 +402,18 @@ export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState,
             ) : (
               <form onSubmit={handleSubmitManual} className="flex flex-col gap-3.5">
                 <section aria-label="Presets de Fabricantes" className="mb-1">
-                  <label className="block text-[11px] font-rajdhani font-bold text-zinc-400 tracking-wider uppercase mb-2">
-                    Presets de Modelos Populares:
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-[11px] font-rajdhani font-bold text-zinc-400 tracking-wider uppercase">
+                      Presets de Fabricantes:
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvanced(!showAdvanced)}
+                      className="text-[10px] font-bold uppercase tracking-tighter text-cyan-500 hover:text-cyan-400"
+                    >
+                      {showAdvanced ? 'Modo Simples (User/Pass)' : 'Modo Avançado (URL Direta)'}
+                    </button>
+                  </div>
                   <nav className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <button
                       type="button"
@@ -354,23 +461,100 @@ export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState,
                   />
                 </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="input-camera-url" className="text-xs font-rajdhani font-bold text-zinc-300 tracking-wider uppercase">
-                    URL RTSP do Stream:
-                  </label>
-                  <input
-                    id="input-camera-url"
-                    type="text"
-                    value={rtspUrl}
-                    onChange={(e) => setRtspUrl(e.target.value)}
-                    placeholder="rtsp://usuario:senha@IP_DA_CAMERA:554/live/ch0"
-                    required
-                    className="cftv-input font-mono text-cyan-300"
-                  />
-                  <p className="text-[11px] text-zinc-500 font-sans">
-                    Formato RFC padrão: <code className="text-cyan-400">rtsp://user:pass@host:port/path</code>
-                  </p>
-                </div>
+                {!showAdvanced ? (
+                  <div className="space-y-3.5">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-rajdhani font-bold text-zinc-300 tracking-wider uppercase">
+                          Usuário (Login):
+                        </label>
+                        <input
+                          type="text"
+                          value={user}
+                          onChange={(e) => setUser(e.target.value)}
+                          placeholder="admin"
+                          className="cftv-input font-sans text-cyan-100"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-rajdhani font-bold text-zinc-300 tracking-wider uppercase">
+                          Senha (Password):
+                        </label>
+                        <input
+                          type="password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="********"
+                          className="cftv-input font-sans text-cyan-100"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2 flex flex-col gap-1.5">
+                        <label className="text-xs font-rajdhani font-bold text-zinc-300 tracking-wider uppercase">
+                          IP ou Host da Câmera:
+                        </label>
+                        <input
+                          type="text"
+                          value={host}
+                          onChange={(e) => setHost(e.target.value)}
+                          placeholder="192.168.1.108"
+                          required={!showAdvanced}
+                          className="cftv-input font-mono text-cyan-400"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-rajdhani font-bold text-zinc-300 tracking-wider uppercase">
+                          Porta RTSP:
+                        </label>
+                        <input
+                          type="number"
+                          value={port}
+                          onChange={(e) => setPort(e.target.value)}
+                          placeholder="554"
+                          className="cftv-input font-mono text-cyan-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-rajdhani font-bold text-zinc-300 tracking-wider uppercase">
+                        Caminho do Stream (Path):
+                      </label>
+                      <input
+                        type="text"
+                        value={path}
+                        onChange={(e) => setPath(e.target.value)}
+                        placeholder="/live/ch0"
+                        className="cftv-input font-mono text-zinc-400"
+                      />
+                    </div>
+                    
+                    <div className="p-2 bg-black/40 border border-white/5 rounded">
+                       <span className="text-[10px] text-zinc-500 font-mono block mb-1">URL RTSP Gerada:</span>
+                       <span className="text-[10px] text-cyan-600 font-mono break-all line-clamp-1 italic">{rtspUrl}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="input-camera-url" className="text-xs font-rajdhani font-bold text-zinc-300 tracking-wider uppercase">
+                      URL RTSP do Stream (Completa):
+                    </label>
+                    <input
+                      id="input-camera-url"
+                      type="text"
+                      value={rtspUrl}
+                      onChange={(e) => setRtspUrl(e.target.value)}
+                      placeholder="rtsp://usuario:senha@IP_DA_CAMERA:554/live/ch0"
+                      required={showAdvanced}
+                      className="cftv-input font-mono text-cyan-300"
+                    />
+                    <p className="text-[11px] text-zinc-500 font-sans">
+                      Formato RFC padrão: <code className="text-cyan-400">rtsp://user:pass@host:port/path</code>
+                    </p>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5">
