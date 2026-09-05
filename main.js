@@ -79,21 +79,25 @@ function getGo2RtcPath() {
   return null;
 }
 
-// Ensure loopback-only Go2RTC YAML configuration
+// Ensure loopback-only Go2RTC YAML configuration in writable userData/temp directory
 function ensureGo2RtcConfig(binaryDir) {
-  const configPath = path.join(binaryDir, 'go2rtc.yaml');
-  const yamlContent = `api:
+  try {
+    const targetDir = app.getPath ? path.join(app.getPath('userData'), 'go2rtc') : binaryDir;
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    const configPath = path.join(targetDir, 'go2rtc.yaml');
+    const yamlContent = `api:
   listen: "127.0.0.1:1984"
 rtsp:
   listen: "127.0.0.1:8554"
 webrtc:
   listen: "127.0.0.1:8555"
 `;
-  try {
     fs.writeFileSync(configPath, yamlContent, 'utf-8');
     return configPath;
   } catch (err) {
-    console.warn('[Go2RTC Config] Não foi possível gravar go2rtc.yaml localmente:', err.message);
+    console.warn('[Go2RTC Config] Não foi possível gravar go2rtc.yaml:', err.message);
     return null;
   }
 }
@@ -193,11 +197,30 @@ function createWindow() {
     }
   });
 
+  // Renderer process diagnostics
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Electron Main] Page failed to load (${errorCode}): ${errorDescription} at URL: ${validatedURL}`);
+  });
+
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    console.error(`[Electron Main] Renderer process crashed: ${details.reason}`);
+  });
+
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    if (level >= 2) {
+      console.warn(`[Renderer Console Warning/Error] ${message} (${sourceId}:${line})`);
+    }
+  });
+
   const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
   if (isDev) {
     mainWindow.loadURL('http://localhost:3000');
   } else {
-    mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+    const indexPath = path.join(__dirname, 'dist', 'index.html');
+    console.log('[Electron Main] Loading production UI from:', indexPath);
+    mainWindow.loadFile(indexPath).catch((err) => {
+      console.error('[Electron Main] Error loading index.html:', err);
+    });
   }
 
   mainWindow.on('closed', () => {

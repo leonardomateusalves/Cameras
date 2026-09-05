@@ -118,7 +118,24 @@ app.use(express.text({ type: ['application/sdp', 'text/plain', 'text/sdp'] }));
 app.use(express.json());
 
 const GO2RTC_API = process.env.GO2RTC_API || 'http://127.0.0.1:1984/api';
-const CONFIG_PATH = path.join(__dirname, 'config.json');
+
+function getWritableConfigPath() {
+  try {
+    const userDataPath = process.env.APPDATA || (process.platform === 'darwin' ? path.join(process.env.HOME || '', 'Library', 'Preferences') : path.join(process.env.HOME || '', '.local', 'share'));
+    if (userDataPath) {
+      const appDir = path.join(userDataPath, 'NexusRTSPMonitor');
+      if (!fs.existsSync(appDir)) {
+        fs.mkdirSync(appDir, { recursive: true });
+      }
+      return path.join(appDir, 'config.json');
+    }
+  } catch (e) {
+    console.warn('[Config] Erro ao obter caminho writable de userData:', e.message);
+  }
+  return path.join(__dirname, 'config.json');
+}
+
+const CONFIG_PATH = getWritableConfigPath();
 
 function loadConfig() {
   if (fs.existsSync(CONFIG_PATH)) {
