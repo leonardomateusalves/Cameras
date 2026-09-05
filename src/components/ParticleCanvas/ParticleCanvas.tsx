@@ -141,13 +141,13 @@ export const ParticleCanvas: React.FC = () => {
 
       // 1. Ambient Background Glow Spots (luzes de fundo nos quadros)
       const grad1 = ctx.createRadialGradient(canvas.width * 0.2, canvas.height * 0.3, 0, canvas.width * 0.2, canvas.height * 0.3, canvas.width * 0.45);
-      grad1.addColorStop(0, 'rgba(0, 243, 255, 0.08)');
+      grad1.addColorStop(0, 'rgba(0, 243, 255, 0.12)');
       grad1.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = grad1;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const grad2 = ctx.createRadialGradient(canvas.width * 0.8, canvas.height * 0.7, 0, canvas.width * 0.8, canvas.height * 0.7, canvas.width * 0.5);
-      grad2.addColorStop(0, 'rgba(0, 120, 255, 0.08)');
+      grad2.addColorStop(0, 'rgba(0, 120, 255, 0.12)');
       grad2.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = grad2;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -161,11 +161,11 @@ export const ParticleCanvas: React.FC = () => {
       for (let x = 0; x <= canvas.width; x += gridSize) {
         const distToMouse = Math.abs(x - mouseX);
         const nearMouse = mouseX > -999 && distToMouse < mouseGlowRadius;
-        const lineAlpha = nearMouse ? 0.06 + (1 - distToMouse / mouseGlowRadius) * 0.22 : 0.035;
+        const lineAlpha = nearMouse ? 0.08 + (1 - distToMouse / mouseGlowRadius) * 0.25 : 0.045;
         
         ctx.strokeStyle = nearMouse 
           ? `rgba(0, 243, 255, ${lineAlpha})`
-          : 'rgba(0, 243, 255, 0.035)';
+          : 'rgba(0, 243, 255, 0.045)';
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, canvas.height);
@@ -176,11 +176,11 @@ export const ParticleCanvas: React.FC = () => {
       for (let y = 0; y <= canvas.height; y += gridSize) {
         const distToMouse = Math.abs(y - mouseY);
         const nearMouse = mouseY > -999 && distToMouse < mouseGlowRadius;
-        const lineAlpha = nearMouse ? 0.06 + (1 - distToMouse / mouseGlowRadius) * 0.22 : 0.035;
+        const lineAlpha = nearMouse ? 0.08 + (1 - distToMouse / mouseGlowRadius) * 0.25 : 0.045;
         
         ctx.strokeStyle = nearMouse 
           ? `rgba(0, 180, 255, ${lineAlpha})`
-          : 'rgba(0, 243, 255, 0.035)';
+          : 'rgba(0, 243, 255, 0.045)';
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(canvas.width, y);

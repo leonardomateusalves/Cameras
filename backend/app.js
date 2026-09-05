@@ -502,7 +502,7 @@ async function startAutomaticDiscoverySequence(customCorrelationId = '') {
     discoveryState.discoveryStatus = '🔴 BLOQUEADO (SEM LAN)';
     
     logger.info('DISCOVERY', 'Ambiente atual não possui acesso direto à rede LAN física. A descoberta real de câmeras será executada somente no Windows Desktop/EXE.', correlationId);
-    logger.error('DISCOVERY', 'Physical LAN access unavailable in current runtime', null, correlationId);
+    logger.warn('DISCOVERY', 'Physical LAN access unavailable in current runtime. Local ONVIF scanning is only active on the Windows Desktop/EXE environment.', correlationId);
 
     broadcast({
       type: 'agent_status_raw',
@@ -592,7 +592,7 @@ async function startAutomaticDiscoverySequence(customCorrelationId = '') {
         tenantId: 'tenant_default',
         name: device.name || `Câmera ONVIF (${hostname})`,
         location: `Portão Local (${hostname})`,
-        rtspUrl: `rtsp://${hostname}:554/live`,
+        rtspUrl: `rtsp://admin:10203040LW@${hostname}:554/live`,
         streamId: `stream_${devId}`,
         enabled: true,
         status: 'ONLINE',

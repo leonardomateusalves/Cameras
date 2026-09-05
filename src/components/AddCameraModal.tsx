@@ -1,5 +1,5 @@
-import { useState, FormEvent } from 'react';
-import { X, Radio, Search, ShieldCheck, Wifi, RefreshCw } from 'lucide-react';
+import { useState, FormEvent, useEffect } from 'react';
+import { X, Radio, Search, ShieldCheck, Wifi, RefreshCw, Edit3 } from 'lucide-react';
 import { CameraStream } from '../types';
 import { GlassCard } from './GlassCard';
 import { CustomSelect } from './CustomSelect';
@@ -16,6 +16,7 @@ interface AddCameraModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (newCam: CameraStream) => void;
+  initialData?: CameraStream | null;
   bootState: {
     agentStatus: string;
     networkStatus: string;
@@ -36,7 +37,7 @@ interface DiscoveredDevice {
   ptz: boolean;
 }
 
-export function AddCameraModal({ isOpen, onClose, onAdd, bootState, onResetDiagnostic }: AddCameraModalProps) {
+export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState, onResetDiagnostic }: AddCameraModalProps) {
   const [activeTab, setActiveTab] = useState<'scan' | 'manual'>('scan');
   const [isScanning, setIsScanning] = useState(false);
   const [discoveredList, setDiscoveredList] = useState<DiscoveredDevice[]>([]);
@@ -51,6 +52,26 @@ export function AddCameraModal({ isOpen, onClose, onAdd, bootState, onResetDiagn
   const [transport, setTransport] = useState<'tcp' | 'udp'>('tcp');
   const [ptzEnabled, setPtzEnabled] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && initialData) {
+      setActiveTab('manual');
+      setName(initialData.name);
+      setRtspUrl(initialData.rtspUrl);
+      setLocation(initialData.location);
+      setResolution(initialData.resolution || '1920x1080');
+      setTransport(initialData.transport || 'tcp');
+      setPtzEnabled(initialData.ptzEnabled || false);
+    } else if (isOpen) {
+      setName('');
+      setRtspUrl('');
+      setLocation('');
+      setResolution('1920x1080');
+      setTransport('tcp');
+      setPtzEnabled(false);
+      setActiveTab('scan');
+    }
+  }, [isOpen, initialData]);
 
   if (!isOpen) return null;
 
@@ -110,6 +131,7 @@ export function AddCameraModal({ isOpen, onClose, onAdd, bootState, onResetDiagn
       }
       
       const newCamData = {
+        id: initialData?.id, // Manter o ID se for edição
         name: name.trim(),
         location: location.trim() || 'Setor Não Definido',
         rtspUrl: rtspUrl.trim(),
@@ -159,8 +181,10 @@ export function AddCameraModal({ isOpen, onClose, onAdd, bootState, onResetDiagn
         <GlassCard id="modal-add-camera-card" className="cftv-glass-modal p-5 sm:p-6">
           <header className="cftv-modal-header">
             <div id="add-camera-title" className="cftv-modal-title text-cyan-400">
-              <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
-              <span>Adicionar e Vincular Câmera CFTV</span>
+              {initialData ? <Edit3 className="w-4 h-4 text-amber-400" /> : <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />}
+              <span className={initialData ? 'text-amber-400' : ''}>
+                {initialData ? 'Editar Conexão da Câmera' : 'Adicionar e Vincular Câmera CFTV'}
+              </span>
             </div>
             <button
               id="btn-close-add-modal"
@@ -173,27 +197,29 @@ export function AddCameraModal({ isOpen, onClose, onAdd, bootState, onResetDiagn
           </header>
 
           <nav className="flex items-center gap-2 mt-4 border-b border-white/10 pb-3" aria-label="Abas de adição">
-            <button
-              onClick={() => setActiveTab('scan')}
-              className={`px-4 py-2 font-rajdhani font-bold text-xs tracking-wider uppercase transition-all flex items-center gap-2 ${
-                activeTab === 'scan'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
-                  : 'bg-white/5 text-zinc-400 hover:text-zinc-200 border border-white/10'
-              }`}
-            >
-              <Search className="w-3.5 h-3.5" />
-              <span>Varredura ONVIF & RTSP (Rede Local)</span>
-            </button>
+            {!initialData && (
+              <button
+                onClick={() => setActiveTab('scan')}
+                className={`px-4 py-2 font-rajdhani font-bold text-xs tracking-wider uppercase transition-all flex items-center gap-2 ${
+                  activeTab === 'scan'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
+                    : 'bg-white/5 text-zinc-400 hover:text-zinc-200 border border-white/10'
+                }`}
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>Varredura ONVIF & RTSP (Rede Local)</span>
+              </button>
+            )}
             <button
               onClick={() => setActiveTab('manual')}
               className={`px-4 py-2 font-rajdhani font-bold text-xs tracking-wider uppercase transition-all flex items-center gap-2 ${
                 activeTab === 'manual'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
+                  ? (initialData ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50' : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50')
                   : 'bg-white/5 text-zinc-400 hover:text-zinc-200 border border-white/10'
               }`}
             >
-              <Wifi className="w-3.5 h-3.5" />
-              <span>Cadastro Manual RTSP</span>
+              {initialData ? <Edit3 className="w-3.5 h-3.5" /> : <Wifi className="w-3.5 h-3.5" />}
+              <span>{initialData ? 'Configurações de Fluxo' : 'Cadastro Manual RTSP'}</span>
             </button>
           </nav>
 

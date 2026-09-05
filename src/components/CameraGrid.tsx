@@ -13,6 +13,7 @@ interface CameraGridProps {
   onFocusToggle: (id: string) => void;
   onSnapshot: (camera: CameraStream, dataUrl: string) => void;
   onOpenPtz: (camera: CameraStream) => void;
+  onEdit?: (camera: CameraStream) => void;
   onOpenAddModal?: () => void;
 }
 
@@ -26,6 +27,7 @@ export function CameraGrid({
   onFocusToggle,
   onSnapshot,
   onOpenPtz,
+  onEdit,
   onOpenAddModal
 }: CameraGridProps) {
   const displayedCameras = focusedCameraId
@@ -107,6 +109,7 @@ export function CameraGrid({
                 onFocusToggle={onFocusToggle}
                 onSnapshot={onSnapshot}
                 onOpenPtz={onOpenPtz}
+                onEdit={onEdit}
                 zoomLevel={cameraZooms[cam.id] || 1}
               />
             </div>

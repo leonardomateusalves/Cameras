@@ -23,8 +23,8 @@ export default function App() {
   const [focusedCameraId, setFocusedCameraId] = useState<string | null>(null);
   const [cameraZooms] = useState<Record<string, number>>({});
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingCamera, setEditingCamera] = useState<CameraStream | null>(null);
   const [selectedPtzCam, setSelectedPtzCam] = useState<CameraStream | null>(null);
-  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
 
   // Auto-Discovery and network state
   const [bootState, setBootState] = useState({
@@ -233,11 +233,21 @@ export default function App() {
     setFocusedCameraId((prev) => (prev === id ? null : id));
   };
 
+  const handleEditCamera = (cam: CameraStream) => {
+    setEditingCamera(cam);
+    setIsAddModalOpen(true);
+  };
+
   const handleSnapshotCaptured = (camera: CameraStream, dataUrl: string) => {
     const link = document.createElement('a');
     link.href = dataUrl;
     link.download = `cftv-snapshot-${camera.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}.jpg`;
     link.click();
+  };
+
+  const handleModalClose = () => {
+    setIsAddModalOpen(false);
+    setEditingCamera(null);
   };
 
   const handleAddCamera = (newCam: CameraStream) => {
@@ -255,29 +265,12 @@ export default function App() {
     }));
   };
 
-  const handleSelectCamera = (id: string) => {
-    console.log(`[CAMERA] Selected: ${id}`);
-    console.log(`[RTSP] Starting connection`);
-    console.log(`[GO2RTC] Starting selected stream`);
-
-    logger.info('CAMERA', `Selected: ${id}`, 'FRONT-SELECT');
-    logger.info('RTSP', 'Starting connection', 'FRONT-SELECT');
-    logger.info('GO2RTC', 'Starting selected stream', 'FRONT-SELECT');
-
-    setSelectedCameraId(id);
-  };
-
-  const activeCameras = selectedCameraId
-    ? cameras.filter((c) => c.id === selectedCameraId)
-    : [];
-
   return (
     <div id="cftv-app-root" className="cftv-app-root flex flex-col min-h-screen">
       {/* Malha Neural de Partículas */}
       <ParticleCanvas />
 
-      {/* Seletor de Câmera Descoberta ou Visualização de Grade */}
-      {agentOffline || cameras.length === 0 ? (
+      <div className="relative z-10 flex flex-col flex-1">
         <CameraGrid
           cameras={cameras}
           focusedCameraId={focusedCameraId}
@@ -288,44 +281,10 @@ export default function App() {
           onFocusToggle={handleFocusToggle}
           onSnapshot={handleSnapshotCaptured}
           onOpenPtz={(c) => setSelectedPtzCam(c)}
+          onEdit={handleEditCamera}
           onOpenAddModal={() => setIsAddModalOpen(true)}
         />
-      ) : selectedCameraId === null ? (
-        <CameraSelector cameras={cameras} onSelect={handleSelectCamera} />
-      ) : (
-        <>
-          {/* Barra de Controle Tática de Exibição */}
-          <div className="flex items-center justify-between px-6 py-2.5 border-b border-zinc-800/60 bg-zinc-950/20 backdrop-blur-md select-none font-rajdhani">
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] text-zinc-500 font-mono tracking-wider">CÂMERA ATIVA:</span>
-              <span className="text-xs font-bold font-orbitron text-cyan-400 tracking-wider">
-                {cameras.find((c) => c.id === selectedCameraId)?.name || 'Câmera'}
-              </span>
-            </div>
-            {cameras.length > 1 && (
-              <button
-                onClick={() => setSelectedCameraId(null)}
-                className="px-3 py-1 bg-zinc-900/60 hover:bg-cyan-950/20 border border-zinc-800 hover:border-cyan-500/25 text-zinc-400 hover:text-cyan-300 font-orbitron text-[10px] tracking-widest rounded transition-all cursor-pointer uppercase font-bold"
-              >
-                Mudar Câmera / Lista
-              </button>
-            )}
-          </div>
-
-          <CameraGrid
-            cameras={activeCameras}
-            focusedCameraId={focusedCameraId}
-            cameraZooms={cameraZooms}
-            agentOffline={agentOffline}
-            agentError={agentError}
-            onRetryConnection={initAgentAndCameras}
-            onFocusToggle={handleFocusToggle}
-            onSnapshot={handleSnapshotCaptured}
-            onOpenPtz={(c) => setSelectedPtzCam(c)}
-            onOpenAddModal={() => setIsAddModalOpen(true)}
-          />
-        </>
-      )}
+      </div>
 
       {/* Botão Flutuante (FAB) para Adicionar Câmera */}
       {!agentOffline && (
@@ -341,8 +300,9 @@ export default function App() {
       {/* Modais de controle */}
       <AddCameraModal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        onClose={handleModalClose}
         onAdd={handleAddCamera}
+        initialData={editingCamera}
         bootState={bootState}
         onResetDiagnostic={handleResetDiagnostic}
       />

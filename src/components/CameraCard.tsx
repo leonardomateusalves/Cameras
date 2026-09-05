@@ -31,6 +31,7 @@ interface CameraCardProps {
   onFocusToggle: (id: string) => void;
   onSnapshot: (cam: CameraStream, dataUrl: string) => void;
   onOpenPtz?: (cam: CameraStream) => void;
+  onEdit?: (cam: CameraStream) => void;
   zoomLevel?: number;
 }
 
@@ -40,6 +41,7 @@ export function CameraCard({
   onFocusToggle,
   onSnapshot,
   onOpenPtz,
+  onEdit,
   zoomLevel = 1
 }: CameraCardProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -407,9 +409,20 @@ export function CameraCard({
                   </div>
                   <div className="flex items-center justify-between border-t border-zinc-800 pt-1.5 mt-1 font-rajdhani text-xs">
                     <span className="text-zinc-400">STREAM STATUS:</span>
-                    <span className="font-bold text-rose-500 uppercase tracking-widest animate-pulse">
-                      {diagnostic?.streamOnline === 'YES' ? '🟢 ONLINE' : '🔴 OFFLINE'}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      {diagnostic?.sdpReceived === 'NO' && diagnostic.rtspConnected === 'YES' && (
+                        <button
+                          onClick={() => onEdit?.(camera)}
+                          className="text-[10px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded transition-all flex items-center gap-1 uppercase font-bold"
+                        >
+                          <Sliders className="w-3 h-3" />
+                          Corrigir Credenciais
+                        </button>
+                      )}
+                      <span className="font-bold text-rose-500 uppercase tracking-widest animate-pulse">
+                        {diagnostic?.streamOnline === 'YES' ? '🟢 ONLINE' : '🔴 OFFLINE'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
