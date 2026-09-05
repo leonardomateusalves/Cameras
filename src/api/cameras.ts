@@ -64,6 +64,25 @@ export interface HealthStatus {
 }
 
 /**
+ * Wrapper para fetch que injeta headers de Private Network Access se necessário
+ */
+async function apiFetch(url: string, options: RequestInit = {}) {
+  const isAbsolute = url.startsWith('http');
+  const isLocalRequest = isAbsolute && (url.includes('127.0.0.1') || url.includes('localhost'));
+  
+  const headers = {
+    ...(options.headers || {}),
+    ...(isLocalRequest ? { 'Access-Control-Request-Private-Network': 'true' } : {})
+  };
+
+  return fetch(url, {
+    ...options,
+    headers: headers as any,
+    mode: isAbsolute ? 'cors' : undefined
+  });
+}
+
+/**
  * Health check real do Agente Local / Backend Express com auto-detecção CORS do Windows local
  */
 export async function checkHealth(): Promise<HealthStatus> {
@@ -97,10 +116,8 @@ export async function checkHealth(): Promise<HealthStatus> {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-      const localRes = await fetch(`${baseUrl}/api/health`, {
+      const localRes = await apiFetch(`${baseUrl}/api/health`, {
         method: 'GET',
-        mode: 'cors',
-        headers: { 'Access-Control-Request-Private-Network': 'true' } as any,
         signal: controller.signal
       });
       
@@ -129,7 +146,7 @@ export async function checkHealth(): Promise<HealthStatus> {
   // Fallback final: tenta a rota relativa se nada mais funcionou
   try {
     const url = '/api/health';
-    const res = await fetch(url);
+    const res = await apiFetch(url);
     if (res.ok) {
       const data = await res.json();
       if (data.status === 'ok') {
@@ -158,7 +175,7 @@ export async function discoverCameras() {
   
   try {
     logger.info('API', `POST ${getApiBase()}/discover`, correlationId);
-    const res = await fetch(`${getApiBase()}/discover`, { method: 'POST' });
+    const res = await apiFetch(`${getApiBase()}/discover`, { method: 'POST' });
     logger.info('API', `POST ${getApiBase()}/discover - Status: ${res.status}`, correlationId);
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
@@ -179,7 +196,7 @@ export async function discoverCamerasFull() {
 
   try {
     logger.info('API', `POST ${targetUrl}`, correlationId);
-    const res = await fetch(targetUrl, { method: 'POST' });
+    const res = await apiFetch(targetUrl, { method: 'POST' });
     logger.info('API', `POST ${targetUrl} - Status: ${res.status}`, correlationId);
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
@@ -202,7 +219,7 @@ export async function testCamera(rtspUrl: string) {
 
   try {
     logger.info('API', `POST ${getApiBase()}/test`, correlationId);
-    const res = await fetch(`${getApiBase()}/test`, {
+    const res = await apiFetch(`${getApiBase()}/test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rtspUrl })
@@ -226,7 +243,7 @@ export async function diagnoseCamera(rtspUrl: string, streamId?: string) {
 
   try {
     logger.info('API', `POST ${targetUrl}`, correlationId);
-    const res = await fetch(targetUrl, {
+    const res = await apiFetch(targetUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rtspUrl, streamId })
@@ -251,7 +268,7 @@ export async function addCamera(camData: Partial<CameraStream>) {
 
   try {
     logger.info('API', `POST ${getApiBase()}`, correlationId);
-    const res = await fetch(getApiBase(), {
+    const res = await apiFetch(getApiBase(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(camData)
@@ -279,7 +296,7 @@ export async function fetchCameras(tenantId = 'tenant_default') {
   try {
     const url = `${getApiBase()}?tenantId=${encodeURIComponent(tenantId)}`;
     logger.info('API', `GET ${url}`, correlationId);
-    const res = await fetch(url);
+    const res = await apiFetch(url);
     logger.info('API', `GET ${getApiBase()} - Status: ${res.status}`, correlationId);
     if (!res.ok) {
       logger.error('API', 'GET carregar câmeras falhou', null, correlationId);
@@ -302,7 +319,7 @@ export async function deleteCamera(id: string) {
   try {
     const url = `${getApiBase()}/${encodeURIComponent(id)}`;
     logger.info('API', `DELETE ${url}`, correlationId);
-    const res = await fetch(url, { method: 'DELETE' });
+    const res = await apiFetch(url, { method: 'DELETE' });
     logger.info('API', `DELETE ${url} - Status: ${res.status}`, correlationId);
     if (!res.ok) {
       logger.error('API', 'DELETE remover câmera falhou', null, correlationId);
@@ -325,7 +342,7 @@ export async function getDiscoveryStatus() {
   try {
     const url = `${getAgentBaseUrl()}/api/discovery-status`;
     logger.info('API', `GET ${url}`, correlationId);
-    const res = await fetch(url);
+    const res = await apiFetch(url);
     logger.info('API', `GET ${url} - Status: ${res.status}`, correlationId);
     if (!res.ok) {
       logger.error('API', 'GET status de descoberta falhou', null, correlationId);

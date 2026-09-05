@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { 
   Camera, Clock, Maximize2, Radio, Sliders, Volume2, VolumeX, ZoomIn,
   Plane, Satellite, Server, DoorClosed, Car, Bed, Sofa, Utensils, Home, Video,
-  AlertTriangle
+  AlertTriangle, X
 } from 'lucide-react';
 import { CameraStream } from '../types';
 import { GlassCard } from './GlassCard';
@@ -32,6 +32,7 @@ interface CameraCardProps {
   onSnapshot: (cam: CameraStream, dataUrl: string) => void;
   onOpenPtz?: (cam: CameraStream) => void;
   onEdit?: (cam: CameraStream) => void;
+  onDelete?: (id: string) => void;
   zoomLevel?: number;
 }
 
@@ -42,6 +43,7 @@ export function CameraCard({
   onSnapshot,
   onOpenPtz,
   onEdit,
+  onDelete,
   zoomLevel = 1
 }: CameraCardProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -320,9 +322,25 @@ export function CameraCard({
             {camera.name}
           </h1>
         </div>
-        <span className="text-[9px] sm:text-[10px] font-rajdhani font-bold text-zinc-400 uppercase tracking-widest flex-shrink-0">
-          {camera.location}
-        </span>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-[9px] sm:text-[10px] font-rajdhani font-bold text-zinc-400 uppercase tracking-widest">
+            {camera.location}
+          </span>
+          {onDelete && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (confirm(`Deseja realmente excluir a câmera "${camera.name}"?`)) {
+                  onDelete(camera.id);
+                }
+              }}
+              className="p-1 hover:bg-rose-500/20 text-zinc-600 hover:text-rose-400 rounded transition-colors"
+              title="Excluir Câmera"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
       </header>
 
       <figure 

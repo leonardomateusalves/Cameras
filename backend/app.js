@@ -1055,6 +1055,7 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
 
     const { hostname, port, username, password, path } = urlInfo;
     const safeUrl = `rtsp://${username ? '***:***@' : ''}${hostname}:${port}${path}`;
+    const cleanRtspUrl = `rtsp://${hostname}:${port}${path}`;
     
     logger.info('RTSP', `Iniciando diagnóstico para ${safeUrl}`, correlationId);
     logger.info('RTSP][CONNECT', `Conectando via TCP em ${hostname}:${port}...`, correlationId);
@@ -1067,19 +1068,27 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
     let cseq = 1;
     let wwwAuthHeader = '';
 
+    const userAgent = 'VLC/3.0.18 LibVLC/3.0.18';
+
+    const sendRequest = (method, url, authHeader = '') => {
+      let req = `${method} ${url} RTSP/1.0\r\nCSeq: ${cseq++}\r\n`;
+      if (authHeader) req += `Authorization: ${authHeader}\r\n`;
+      if (method === 'DESCRIBE') req += `Accept: application/sdp\r\n`;
+      req += `User-Agent: ${userAgent}\r\n\r\n`;
+      
+      logger.info('RTSP', `${method} enviado (CSeq: ${cseq-1})`, correlationId);
+      client.write(req);
+    };
+
     const cleanAndResolve = (result) => {
       client.destroy();
       resolve(result);
     };
 
     client.connect(port, hostname, () => {
-      state = 'CONNECTED';
-      logger.info('RTSP][CONNECT', '🟢 Conexão TCP estabelecida com sucesso.', correlationId);
-      
-      const optionsReq = `OPTIONS ${rtspUrl} RTSP/1.0\r\nCSeq: ${cseq++}\r\nUser-Agent: NexusRTSP/2.4.0\r\n\r\n`;
       state = 'OPTIONS_SENT';
-      logger.info('RTSP', `OPTIONS enviado (CSeq: ${cseq-1})`, correlationId);
-      client.write(optionsReq);
+      logger.info('RTSP][CONNECT', '🟢 Conexão TCP estabelecida com sucesso.', correlationId);
+      sendRequest('OPTIONS', cleanRtspUrl);
     });
 
     client.on('data', (data) => {
@@ -1104,13 +1113,10 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
         }
 
         if (statusLine.includes(' 200 ')) {
-          if (state === 'OPTIONS_SENT') {
+          if (state === 'OPTIONS_SENT' || state === 'OPTIONS_AUTH_SENT') {
             buffer = buffer.substring(headerBlock.length + 4); 
-
-            const describeReq = `DESCRIBE ${rtspUrl} RTSP/1.0\r\nCSeq: ${cseq++}\r\nAccept: application/sdp\r\nUser-Agent: NexusRTSP/2.4.0\r\n\r\n`;
             state = 'DESCRIBE_SENT';
-            logger.info('RTSP][DESCRIBE', `DESCRIBE enviado (CSeq: ${cseq-1})`, correlationId);
-            client.write(describeReq);
+            sendRequest('DESCRIBE', cleanRtspUrl);
           } else if (state === 'DESCRIBE_SENT' || state === 'DESCRIBE_AUTH_SENT') {
             logger.info('RTSP][DESCRIBE', '🟢 DESCRIBE retornado com sucesso 200 OK.', correlationId);
             
@@ -1138,41 +1144,43 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
         } else if (statusLine.includes(' 401 ')) {
           wwwAuthHeader = headers['www-authenticate'] || '';
 
-          if (state === 'DESCRIBE_SENT' && wwwAuthHeader && username) {
+          if ((state === 'OPTIONS_SENT' || state === 'DESCRIBE_SENT') && wwwAuthHeader && username) {
             buffer = buffer.substring(headerBlock.length + 4); 
             
             let authHeaderValue = '';
+            const method = state === 'OPTIONS_SENT' ? 'OPTIONS' : 'DESCRIBE';
+            
             if (wwwAuthHeader.toLowerCase().includes('basic')) {
               const credentials = Buffer.from(`${username}:${password}`).toString('base64');
               authHeaderValue = `Basic ${credentials}`;
-              logger.info('RTSP][DESCRIBE', 'Enviando credenciais Basic Auth...', correlationId);
+              logger.info('RTSP][AUTH', `Enviando credenciais Basic Auth para ${method}...`, correlationId);
             } else if (wwwAuthHeader.toLowerCase().includes('digest')) {
               const realmMatch = wwwAuthHeader.match(/realm="([^"]+)"/i);
               const nonceMatch = wwwAuthHeader.match(/nonce="([^"]+)"/i);
               if (realmMatch && nonceMatch) {
                 const realm = realmMatch[1];
                 const nonce = nonceMatch[1];
-                const uri = rtspUrl;
+                const uri = cleanRtspUrl;
                 
                 const HA1 = md5(`${username}:${realm}:${password}`);
-                const HA2 = md5(`DESCRIBE:${uri}`);
+                const HA2 = md5(`${method}:${uri}`);
                 const response = md5(`${HA1}:${nonce}:${HA2}`);
                 
                 authHeaderValue = `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", response="${response}"`;
-                logger.info('RTSP][DESCRIBE', `Enviando credenciais Digest Auth (realm: ${realm})...`, correlationId);
+                logger.info('RTSP][AUTH', `Enviando credenciais Digest Auth para ${method} (realm: ${realm})...`, correlationId);
               }
             }
 
             if (authHeaderValue) {
-              const authenticatedDescribeReq = `DESCRIBE ${rtspUrl} RTSP/1.0\r\nCSeq: ${cseq++}\r\nAuthorization: ${authHeaderValue}\r\nAccept: application/sdp\r\nUser-Agent: NexusRTSP/2.4.0\r\n\r\n`;
-              state = 'DESCRIBE_AUTH_SENT';
-              client.write(authenticatedDescribeReq);
+              const oldState = state;
+              state = oldState === 'OPTIONS_SENT' ? 'OPTIONS_AUTH_SENT' : 'DESCRIBE_AUTH_SENT';
+              sendRequest(method, cleanRtspUrl, authHeaderValue);
             } else {
               return cleanAndResolve({
                 ok: false,
                 stage: 'auth',
                 error: 'AUTH_METHOD_UNSUPPORTED',
-                message: 'Método de autenticação da câmera não suportado ou credenciais inválidas.',
+                message: 'Método de autenticação da câmera não suportado.',
                 videoCodec: 'UNKNOWN',
                 audioCodec: 'NONE',
                 sdp: ''

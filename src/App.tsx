@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { CameraStream } from './types';
-import { fetchCameras, checkHealth, getDiscoveryStatus, getAgentBaseUrl } from './api/cameras';
+import { fetchCameras, checkHealth, getDiscoveryStatus, getAgentBaseUrl, deleteCamera } from './api/cameras';
 import { ParticleCanvas } from './components/ParticleCanvas/ParticleCanvas';
 import { CameraGrid } from './components/CameraGrid';
 import { AddCameraModal } from './components/AddCameraModal';
@@ -260,6 +260,18 @@ export default function App() {
     initAgentAndCameras();
   };
 
+  const handleDeleteCamera = async (id: string) => {
+    try {
+      const res = await deleteCamera(id);
+      if (res.success) {
+        setCameras((prev) => prev.filter((c) => c.id !== id));
+        if (focusedCameraId === id) setFocusedCameraId(null);
+      }
+    } catch (err: any) {
+      alert('Erro ao excluir câmera: ' + err.message);
+    }
+  };
+
   const handleResetDiagnostic = () => {
     setBootState((prev) => ({
       ...prev,
@@ -287,6 +299,7 @@ export default function App() {
           onSnapshot={handleSnapshotCaptured}
           onOpenPtz={(c) => setSelectedPtzCam(c)}
           onEdit={handleEditCamera}
+          onDelete={handleDeleteCamera}
           onOpenAddModal={() => setIsAddModalOpen(true)}
         />
       </div>

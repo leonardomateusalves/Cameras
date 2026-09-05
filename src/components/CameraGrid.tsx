@@ -16,6 +16,7 @@ interface CameraGridProps {
   onSnapshot: (camera: CameraStream, dataUrl: string) => void;
   onOpenPtz: (camera: CameraStream) => void;
   onEdit?: (camera: CameraStream) => void;
+  onDelete?: (id: string) => void;
   onOpenAddModal?: () => void;
 }
 
@@ -30,6 +31,7 @@ export function CameraGrid({
   onSnapshot,
   onOpenPtz,
   onEdit,
+  onDelete,
   onOpenAddModal
 }: CameraGridProps) {
   const [manualUrl, setManualUrl] = useState(getAgentBaseUrl() || '127.0.0.1:8080');
@@ -155,6 +157,7 @@ export function CameraGrid({
                 onSnapshot={onSnapshot}
                 onOpenPtz={onOpenPtz}
                 onEdit={onEdit}
+                onDelete={onDelete}
                 zoomLevel={cameraZooms[cam.id] || 1}
               />
             </div>
