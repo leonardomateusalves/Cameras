@@ -396,7 +396,9 @@ export function CameraCard({
                   <div className="flex items-center justify-between">
                     <span className="text-zinc-500">SDP SESSION:</span>
                     <span className="font-bold">
-                      {diagnostic?.sdpReceived === 'YES' ? '🟢 RECEBIDO' : diagnostic?.sdpReceived === 'NO' ? '🔴 FALHOU / NÃO AUTORIZADO' : '🟡 SOLICITANDO'}
+                      {diagnostic?.sdpReceived === 'YES' ? '🟢 RECEBIDO' : 
+                       (diagnostic?.sdpReceived === 'NO' && diagnostic.errorMsg.includes('incorretos')) ? '🔴 SENHA INCORRETA' :
+                       diagnostic?.sdpReceived === 'NO' ? '🔴 FALHOU / NÃO AUTORIZADO' : '🟡 SOLICITANDO'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">

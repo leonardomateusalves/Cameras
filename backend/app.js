@@ -1143,6 +1143,7 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
           }
         } else if (statusLine.includes(' 401 ')) {
           wwwAuthHeader = headers['www-authenticate'] || '';
+          logger.warn('RTSP][AUTH', `Câmera solicitou autenticação (401). Challenge: ${wwwAuthHeader}`, correlationId);
 
           if ((state === 'OPTIONS_SENT' || state === 'DESCRIBE_SENT') && wwwAuthHeader && username) {
             buffer = buffer.substring(headerBlock.length + 4); 
@@ -1155,11 +1156,17 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
               authHeaderValue = `Basic ${credentials}`;
               logger.info('RTSP][AUTH', `Enviando credenciais Basic Auth para ${method}...`, correlationId);
             } else if (wwwAuthHeader.toLowerCase().includes('digest')) {
-              const realmMatch = wwwAuthHeader.match(/realm="([^"]+)"/i);
-              const nonceMatch = wwwAuthHeader.match(/nonce="([^"]+)"/i);
-              if (realmMatch && nonceMatch) {
-                const realm = realmMatch[1];
-                const nonce = nonceMatch[1];
+              // Regex mais robusta para realm, nonce e opaque (com ou sem aspas, lida com vírgulas ou espaços)
+              const getParam = (name) => {
+                const match = wwwAuthHeader.match(new RegExp(`${name}="?([^",]+)"?`, 'i'));
+                return match ? match[1] : null;
+              };
+
+              const realm = getParam('realm');
+              const nonce = getParam('nonce');
+              const opaque = getParam('opaque');
+              
+              if (realm && nonce) {
                 const uri = cleanRtspUrl;
                 
                 const HA1 = md5(`${username}:${realm}:${password}`);
@@ -1167,7 +1174,13 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
                 const response = md5(`${HA1}:${nonce}:${HA2}`);
                 
                 authHeaderValue = `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", response="${response}"`;
+                if (opaque) {
+                  authHeaderValue += `, opaque="${opaque}"`;
+                }
+                
                 logger.info('RTSP][AUTH', `Enviando credenciais Digest Auth para ${method} (realm: ${realm})...`, correlationId);
+              } else {
+                logger.error('RTSP][AUTH', 'Falha ao extrair parâmetros essenciais (realm/nonce) do Digest Auth Challenge', correlationId);
               }
             }
 
@@ -1180,18 +1193,20 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
                 ok: false,
                 stage: 'auth',
                 error: 'AUTH_METHOD_UNSUPPORTED',
-                message: 'Método de autenticação da câmera não suportado.',
+                message: 'Método de autenticação não suportado ou falha no parsing.',
                 videoCodec: 'UNKNOWN',
                 audioCodec: 'NONE',
                 sdp: ''
               });
             }
           } else {
+            // Se já tentamos autenticar e recebemos 401 de novo, as credenciais estão erradas
+            const isRetry = state === 'OPTIONS_AUTH_SENT' || state === 'DESCRIBE_AUTH_SENT';
             return cleanAndResolve({
               ok: false,
               stage: 'auth',
-              error: 'UNAUTHORIZED',
-              message: 'Falha de autenticação RTSP. Verifique usuário e senha.',
+              error: isRetry ? 'INVALID_CREDENTIALS' : 'UNAUTHORIZED',
+              message: isRetry ? 'Usuário ou senha incorretos.' : 'Falha de autenticação RTSP. Verifique usuário e senha.',
               videoCodec: 'UNKNOWN',
               audioCodec: 'NONE',
               sdp: ''
