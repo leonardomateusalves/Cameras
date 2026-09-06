@@ -157,12 +157,18 @@ export async function checkHealth(): Promise<HealthStatus> {
     if (res.ok) {
       const data = await res.json();
       if (data.status === 'ok') {
+        const isWindows = !!data.isWindowsAgent;
         return {
-          online: true,
-          service: 'web-backend',
-          go2rtcOnline: true,
+          online: isWindows,
+          service: isWindows ? 'windows-agent' : 'web-backend',
+          go2rtcOnline: isWindows,
           camerasCount: 0,
-          discoveryState: data.discoveryState
+          error: isWindows ? undefined : 'Software Nexus Agent não detectado no Windows (porta 8080).',
+          discoveryState: data.discoveryState || {
+            agentStatus: '🔴 NÃO DETECTADO',
+            networkStatus: '🔴 OFFLINE',
+            discoveryStatus: '🔴 AGUARDANDO AGENTE WINDOWS'
+          }
         };
       }
     }
@@ -170,7 +176,12 @@ export async function checkHealth(): Promise<HealthStatus> {
 
   return {
     online: false,
-    error: 'Windows Local Agent não detectado nas portas padrão (8080/3000).'
+    error: 'Windows Local Agent não detectado na porta 8080.',
+    discoveryState: {
+      agentStatus: '🔴 NÃO DETECTADO',
+      networkStatus: '🔴 OFFLINE',
+      discoveryStatus: '🔴 AGUARDANDO AGENTE WINDOWS'
+    }
   };
 }
 

@@ -9,6 +9,7 @@ export interface CameraStream {
   location: string;
   rtspUrl: string;
   rtspUrlSafe?: string;
+  ip?: string;
   streamId?: string;
   streamUrl?: string;
   enabled: boolean;

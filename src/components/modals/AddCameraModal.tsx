@@ -1,10 +1,10 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { X, Radio, Search, ShieldCheck, Wifi, RefreshCw, Edit3 } from 'lucide-react';
-import { CameraStream } from '../types';
-import { GlassCard } from './GlassCard';
-import { CustomSelect } from './CustomSelect';
-import { discoverCameras, discoverCamerasFull, testCamera, addCamera } from '../api/cameras';
-import { DiagnosticViewer } from './DiagnosticViewer';
+import { CameraStream } from '../../types';
+import { GlassCard } from '../ui/GlassCard';
+import { CustomSelect } from '../ui/CustomSelect';
+import { discoverCameras, discoverCamerasFull, testCamera, addCamera } from '../../api/cameras';
+import { DiagnosticViewer } from '../tools/DiagnosticViewer';
 
 interface LogEntry {
   timestamp: string;

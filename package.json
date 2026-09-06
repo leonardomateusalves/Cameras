@@ -38,7 +38,12 @@
       "main.js",
       "preload.js",
       "backend/**/*",
-      "dist/**/*"
+      "dist/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "backend/**/*"
     ],
     "extraResources": [
       {

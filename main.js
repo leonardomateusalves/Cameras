@@ -93,6 +93,8 @@ rtsp:
   listen: "127.0.0.1:8554"
 webrtc:
   listen: "127.0.0.1:8555"
+ffmpeg:
+  bin: "ffmpeg"
 `;
     fs.writeFileSync(configPath, yamlContent, 'utf-8');
     return configPath;

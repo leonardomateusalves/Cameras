@@ -32,15 +32,17 @@ export function DiagnosticViewer({
       <div className="cftv-terminal-hud" id="cftv-terminal-status-hud">
         <div className="cftv-terminal-hud-item">
           <span className="cftv-terminal-hud-label">AGENT:</span>
-          <span className={agentStatus.includes('🟢') ? 'cftv-status-online' : 'cftv-status-pending animate-pulse'}>
-            {agentStatus}
+          <span className={agentStatus.includes('🟢') ? 'cftv-status-online flex items-center gap-1.5' : 'cftv-status-pending animate-pulse flex items-center gap-1.5'}>
+            <span className={`w-1.5 h-1.5 rounded-full ${agentStatus.includes('🟢') ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+            {agentStatus.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim()}
           </span>
         </div>
 
         <div className="cftv-terminal-hud-item">
           <span className="cftv-terminal-hud-label">NET:</span>
-          <span className={networkStatus.includes('🟢') ? 'cftv-status-online' : 'cftv-status-pending'}>
-            {networkStatus}
+          <span className={networkStatus.includes('🟢') ? 'cftv-status-online flex items-center gap-1.5' : 'cftv-status-pending flex items-center gap-1.5'}>
+            <span className={`w-1.5 h-1.5 rounded-full ${networkStatus.includes('🟢') ? 'bg-emerald-400' : networkStatus.includes('🔴') ? 'bg-rose-400' : 'bg-amber-400 animate-pulse'}`} />
+            {networkStatus.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim()}
           </span>
         </div>
 
@@ -48,12 +50,13 @@ export function DiagnosticViewer({
           <span className="cftv-terminal-hud-label">DESCOBERTA:</span>
           <span className={
             discoveryStatus.includes('🟢') 
-              ? 'cftv-status-online' 
+              ? 'cftv-status-online flex items-center gap-1.5' 
               : discoveryStatus.includes('🔍') 
-                ? 'cftv-status-scanning' 
-                : 'cftv-status-pending'
+                ? 'cftv-status-scanning flex items-center gap-1.5' 
+                : 'cftv-status-pending flex items-center gap-1.5'
           }>
-            {discoveryStatus}
+            <span className={`w-1.5 h-1.5 rounded-full ${discoveryStatus.includes('🟢') ? 'bg-emerald-400' : discoveryStatus.includes('🔍') ? 'bg-cyan-400 animate-ping' : 'bg-amber-400 animate-pulse'}`} />
+            {discoveryStatus.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim()}
           </span>
         </div>
       </div>

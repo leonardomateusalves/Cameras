@@ -1,6 +1,6 @@
 import { Sliders, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
-import { CameraStream } from '../types';
-import { GlassCard } from './GlassCard';
+import { CameraStream } from '../../types';
+import { GlassCard } from '../ui/GlassCard';
 
 interface PtzModalProps {
   camera: CameraStream | null;

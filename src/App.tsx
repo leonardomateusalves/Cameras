@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
-import { Plus } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
 import { CameraStream } from './types';
-import { fetchCameras, checkHealth, getDiscoveryStatus, getAgentBaseUrl, deleteCamera } from './api/cameras';
-import { ParticleCanvas } from './components/ParticleCanvas/ParticleCanvas';
-import { CameraGrid } from './components/CameraGrid';
-import { AddCameraModal } from './components/AddCameraModal';
-import { PtzModal } from './components/PtzModal';
-import { CameraSelector } from './components/CameraSelector';
+import { fetchCameras, checkHealth, getDiscoveryStatus, getAgentBaseUrl, deleteCamera, discoverCamerasFull } from './api/cameras';
+import { ParticleCanvas } from './components/ui/ParticleCanvas';
+import { CameraGrid } from './components/camera/CameraGrid';
+import { AddCameraModal } from './components/modals/AddCameraModal';
+import { PtzModal } from './components/modals/PtzModal';
+import { LogTerminalModal } from './components/modals/LogTerminalModal';
+import { TacticalCommandCenter } from './components/ui/TacticalCommandCenter';
 import { logger } from './utils/logger';
 
 interface LogEntry {
@@ -25,6 +25,9 @@ export default function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingCamera, setEditingCamera] = useState<CameraStream | null>(null);
   const [selectedPtzCam, setSelectedPtzCam] = useState<CameraStream | null>(null);
+  const [showConsole, setShowConsole] = useState(false);
+  const [isManualScanning, setIsManualScanning] = useState(false);
+  const [isTimedOut, setIsTimedOut] = useState(false);
 
   // Auto-Discovery and network state
   const [bootState, setBootState] = useState({
@@ -35,19 +38,67 @@ export default function App() {
     logs: [] as LogEntry[]
   });
 
+  // Função para adicionar log ao bootState
+  const addLog = (prefix: string, message: string) => {
+    const timestamp = new Date().toLocaleTimeString('pt-BR', { hour12: false });
+    setBootState(prev => {
+      // Evita logs duplicados idênticos em sequência
+      if (prev.logs.length > 0 && prev.logs[prev.logs.length - 1].message === message) {
+        return prev;
+      }
+      return {
+        ...prev,
+        logs: [...prev.logs, { timestamp, prefix, message }]
+      };
+    });
+  };
+
+  // Função para inicializar o estado e carregar câmeras
   const initAgentAndCameras = async () => {
     try {
       setLoading(true);
+      // Sempre tenta limpar o estado de timeout ao iniciar uma nova busca
+      setIsTimedOut(false);
+      
+      addLog('SYSTEM', 'Iniciando sequência de boot tático...');
+      
       const health = await checkHealth();
       if (!health.online) {
         setAgentOffline(true);
-        setAgentError(health.error || 'Windows Local Agent não conectado.');
+        setAgentError(health.error || 'Software Nexus Agent não detectado no Windows (porta 8080).');
+        addLog('ERROR', `AGENT_NOT_FOUND: ${health.error || 'Nexus Agent offline. Verifique a porta 8080.'}`);
+        if (health.discoveryState) {
+          setBootState(prev => ({
+            ...prev,
+            agentStatus: health.discoveryState!.agentStatus,
+            networkStatus: health.discoveryState!.networkStatus,
+            discoveryStatus: health.discoveryState!.discoveryStatus,
+            logs: health.discoveryState!.logs || prev.logs
+          }));
+        } else {
+          const timestamp = new Date().toLocaleTimeString('pt-BR', { hour12: false });
+          const errorLog: LogEntry = {
+            timestamp,
+            prefix: 'ERROR',
+            message: `AGENT_NOT_FOUND: ${health.error || 'Software Nexus Agent não detectado. Verifique se o .exe está em execução e a porta 8080 está liberada no Firewall do Windows.'}`
+          };
+          setBootState(prev => ({
+            ...prev,
+            agentStatus: '🔴 NÃO DETECTADO',
+            networkStatus: '🔴 OFFLINE',
+            discoveryStatus: '🔴 AGUARDANDO AGENTE WINDOWS',
+            logs: [...prev.logs, errorLog]
+          }));
+        }
         setCameras([]);
         return;
       }
 
       setAgentOffline(false);
       setAgentError('');
+      addLog('AGENT', 'NEXUS_AGENT_ONLINE: Conectado ao broker local (127.0.0.1:8080).');
+      addLog('NETWORK', 'MAPEANDO_ADAPTADORES: Identificando interfaces de rede IPv4 ativas...');
+      addLog('ONVIF', 'WS_DISCOVERY: Enviando sondagem multicast (239.255.255.250:3702)...');
 
       if (health.discoveryState) {
         setBootState(prev => ({
@@ -62,11 +113,30 @@ export default function App() {
       const res = await fetchCameras();
       if (res && res.cameras) {
         setCameras(res.cameras);
+        if (res.cameras.length === 0) {
+          addLog('DISCOVERY', 'Agente conectado, mas nenhum dispositivo foi identificado na varredura inicial.');
+        } else {
+          addLog('DISCOVERY', `${res.cameras.length} dispositivo(s) prontos para transmissão.`);
+        }
       }
     } catch (err: any) {
       logger.error('FRONTEND', 'Erro de conexão com o agente local', err);
       setAgentOffline(true);
       setAgentError('Windows Local Agent não conectado.');
+      
+      const timestamp = new Date().toLocaleTimeString('pt-BR', { hour12: false });
+      const errorLog: LogEntry = {
+        timestamp,
+        prefix: 'ERROR',
+        message: `CONNECTION_FAILED: Falha crítica ao contactar agente local. Motivo: ${err.message || 'Timeout/Recusa de Conexão'}. Certifique-se de que o Agente Windows está aberto e operando na porta 8080.`
+      };
+      setBootState(prev => ({
+        ...prev,
+        agentStatus: '🔴 NÃO DETECTADO',
+        networkStatus: '🔴 OFFLINE',
+        discoveryStatus: '🔴 FALHA NA COMUNICAÇÃO',
+        logs: [...prev.logs, errorLog]
+      }));
     } finally {
       setLoading(false);
     }
@@ -298,6 +368,24 @@ export default function App() {
     }));
   };
 
+  const handleForceDiscovery = async () => {
+    try {
+      setIsTimedOut(false);
+      setIsManualScanning(true);
+      await discoverCamerasFull();
+      
+      // Aguarda o backend processar e então tenta carregar os resultados
+      setTimeout(async () => {
+        await initAgentAndCameras();
+        setIsManualScanning(false);
+      }, 5000); // 5 segundos de varredura profunda
+    } catch (err) {
+      logger.error('RESCAN', 'Erro ao forçar descoberta', err);
+      setIsManualScanning(false);
+      setIsTimedOut(true);
+    }
+  };
+
   return (
     <div id="cftv-app-root" className="cftv-app-root flex flex-col min-h-screen">
       {/* Malha Neural de Partículas */}
@@ -317,7 +405,9 @@ export default function App() {
           onOpenPtz={(c) => setSelectedPtzCam(c)}
           onEdit={handleEditCamera}
           onDelete={handleDeleteCamera}
-          onOpenAddModal={() => setIsAddModalOpen(true)}
+          isManualScanning={isManualScanning}
+          isTimedOut={isTimedOut}
+          addLog={addLog}
         />
       </div>
 
@@ -338,16 +428,20 @@ export default function App() {
         onResetDiagnostic={handleResetDiagnostic}
       />
 
-      {/* Botão Flutuante (FAB) para Adicionar Câmera */}
-      {!agentOffline && (
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="cftv-btn-fab"
-          title="Adicionar / Vincular Nova Câmera"
-        >
-          <Plus className="w-6 h-6 stroke-[2.5]" />
-        </button>
-      )}
+      <LogTerminalModal
+        isOpen={showConsole}
+        onClose={() => setShowConsole(false)}
+        logs={bootState.logs}
+      />
+
+      {/* Tactical Command Center - Centralized Global Controls */}
+      <TacticalCommandCenter
+        onRescan={handleForceDiscovery}
+        onAddCamera={() => setIsAddModalOpen(true)}
+        onOpenLogs={() => setShowConsole(true)}
+        isScanning={isManualScanning}
+        isTimedOut={isTimedOut}
+      />
     </div>
   );
 }

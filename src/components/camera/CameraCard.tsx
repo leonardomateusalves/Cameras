@@ -4,9 +4,9 @@ import {
   Plane, Satellite, Server, DoorClosed, Car, Bed, Sofa, Utensils, Home, Video,
   AlertTriangle, X
 } from 'lucide-react';
-import { CameraStream } from '../types';
-import { GlassCard } from './GlassCard';
-import { diagnoseCamera } from '../api/cameras';
+import { CameraStream } from '../../types';
+import { GlassCard } from '../ui/GlassCard';
+import { diagnoseCamera } from '../../api/cameras';
 
 const getCameraIcon = (name: string, location: string) => {
   const str = `${name} ${location}`.toLowerCase();
@@ -62,6 +62,7 @@ export function CameraCard({
     go2rtcStreamCreated: 'PENDING' | 'YES' | 'NO';
     streamOnline: 'PENDING' | 'YES' | 'NO';
     errorMsg: string;
+    warningMsg?: string;
   } | null>(null);
 
   // Sincroniza o relógio digital no OSD
@@ -157,7 +158,8 @@ export function CameraCard({
                 audioCodec: diagResult.audioCodec || 'NONE',
                 go2rtcStreamCreated: 'YES',
                 streamOnline: 'YES',
-                errorMsg: ''
+                errorMsg: '',
+                warningMsg: diagResult.warningMsg || diagResult.message || ''
               });
             } else {
               const isTcpErr = diagResult.stage === 'tcp';
@@ -172,7 +174,8 @@ export function CameraCard({
                 audioCodec: diagResult.audioCodec || '',
                 go2rtcStreamCreated: isCodecMismatch ? 'NO' : 'PENDING',
                 streamOnline: 'NO',
-                errorMsg: diagResult.message || 'Falha de conexão WebRTC'
+                errorMsg: diagResult.message || 'Falha de conexão WebRTC',
+                warningMsg: diagResult.warningMsg || ''
               });
             }
           } catch (e) {}
@@ -241,7 +244,8 @@ export function CameraCard({
               audioCodec: diagResult.audioCodec || 'NONE',
               go2rtcStreamCreated: 'YES',
               streamOnline: 'YES',
-              errorMsg: ''
+              errorMsg: '',
+              warningMsg: diagResult.warningMsg || diagResult.message || ''
             });
           } else {
             const isTcpErr = diagResult.stage === 'tcp';
@@ -256,7 +260,8 @@ export function CameraCard({
               audioCodec: diagResult.audioCodec || '',
               go2rtcStreamCreated: isCodecMismatch ? 'NO' : 'PENDING',
               streamOnline: 'NO',
-              errorMsg: diagResult.message || 'Falha na negociação do stream'
+              errorMsg: diagResult.message || 'Falha na negociação do stream',
+              warningMsg: diagResult.warningMsg || ''
             });
             setErrorMessage(diagResult.message || 'RTSP OFFLINE');
           }
@@ -417,11 +422,16 @@ export function CameraCard({
                     <span className="text-zinc-500">VIDEO CODEC:</span>
                     <span className="font-bold">
                       {diagnostic?.videoCodec 
-                        ? (['H264', 'VP8', 'VP9', 'AV1', 'H265', 'HEVC'].includes(diagnostic.videoCodec.toUpperCase()) 
-                            ? (['H265', 'HEVC'].includes(diagnostic.videoCodec.toUpperCase()) 
-                                ? `🟡 ${diagnostic.videoCodec} (BETA)` 
-                                : `🟢 ${diagnostic.videoCodec}`)
-                            : `🔴 ${diagnostic.videoCodec} (INCOMPATÍVEL)`)
+                        ? (() => {
+                            const upper = diagnostic.videoCodec.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                            if (upper.includes('H264') || upper.includes('AVC') || ['VP8', 'VP9', 'AV1'].includes(upper)) {
+                              return `🟢 ${diagnostic.videoCodec} (NATIVO)`;
+                            }
+                            if (upper.includes('H265') || upper.includes('HEVC') || upper.includes('JPEG') || upper.includes('MJPEG') || upper.includes('MPEG4')) {
+                              return `🟢 ${diagnostic.videoCodec} (TRANSCODE)`;
+                            }
+                            return `🟡 ${diagnostic.videoCodec}`;
+                          })()
                         : '🟡 NEGOCIANDO CODEC'}
                     </span>
                   </div>
@@ -438,7 +448,7 @@ export function CameraCard({
                   <div className="flex items-center justify-between">
                     <span className="text-zinc-500">GO2RTC PIPELINE:</span>
                     <span className="font-bold">
-                      {diagnostic?.go2rtcStreamCreated === 'YES' ? '🟢 STREAM CREATED' : diagnostic?.go2rtcStreamCreated === 'NO' ? '🔴 CODECS NOT MATCHED' : '🟡 CRIANDO'}
+                      {diagnostic?.go2rtcStreamCreated === 'YES' ? '🟢 STREAM ATIVO' : diagnostic?.go2rtcStreamCreated === 'NO' ? '🔴 FALHA NA PIPELINE' : '🟡 CRIANDO PIPELINE'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between border-t border-zinc-800 pt-1.5 mt-1 font-rajdhani text-xs">
@@ -460,12 +470,26 @@ export function CameraCard({
                   </div>
                 </div>
 
-                {/* Rodapé da Mensagem Explicativa */}
-                {diagnostic?.videoCodec && !['H264', 'VP8', 'VP9', 'AV1'].includes(diagnostic.videoCodec.toUpperCase()) && (
-                  <div className="mt-2 text-[10px] text-zinc-400 bg-rose-950/20 border border-rose-500/20 p-1.5 rounded leading-tight text-center font-rajdhani">
-                    RTSP conectado, mas o codec anunciado pela câmera não é compatível com o pipeline atual do Go2RTC.
-                  </div>
-                )}
+                {/* Rodapé Informativo da Pipeline Go2RTC */}
+                {diagnostic?.videoCodec && (() => {
+                  const upper = diagnostic.videoCodec.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                  if (upper.includes('H265') || upper.includes('HEVC') || upper.includes('JPEG') || upper.includes('MJPEG') || upper.includes('MPEG4')) {
+                    return (
+                      <div className="mt-2 text-[10px] text-cyan-300 bg-cyan-950/40 border border-cyan-500/30 p-1.5 rounded leading-tight text-center font-rajdhani flex items-center justify-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                        Codec {diagnostic.videoCodec} detectado: Pipeline de transcodificação em tempo real ativa no Go2RTC.
+                      </div>
+                    );
+                  }
+                  if (diagnostic.warningMsg) {
+                    return (
+                      <div className="mt-2 text-[10px] text-amber-300 bg-amber-950/30 border border-amber-500/30 p-1.5 rounded leading-tight text-center font-rajdhani">
+                        {diagnostic.warningMsg}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             ) : (
               <>

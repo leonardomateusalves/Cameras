@@ -292,6 +292,11 @@ function getExecutionMode() {
   return 'AI_STUDIO_PREVIEW';
 }
 
+function isPhysicalWindowsAgent() {
+  const mode = getExecutionMode();
+  return mode === 'WINDOWS_EXE' || mode === 'WINDOWS_PORTABLE' || (mode === 'ELECTRON_DESKTOP' && process.platform === 'win32');
+}
+
 // Centralized logging mechanism conforming to detailed specifications
 const logger = {
   formatMessage(prefix, message, correlationId = '') {
@@ -396,16 +401,26 @@ async function startAutomaticDiscoverySequence(customCorrelationId = '') {
   
   const executionMode = getExecutionMode();
 
+  const isPhysical = isPhysicalWindowsAgent();
+
   // 1. [BOOT]
-  if (!isAgentOnline) {
-    logger.info('BOOT', 'Nexus RTSP Monitor starting', correlationId);
-    logger.info('BOOT', 'Checking backend', correlationId);
-    logger.info('BOOT', 'Starting Agent', correlationId);
-    discoveryState.agentStatus = '🟢 ONLINE';
-    logger.info('AGENT', 'Agent started', correlationId);
-    isAgentOnline = true;
+  if (isPhysical) {
+    if (!isAgentOnline) {
+      logger.info('BOOT', 'Nexus RTSP Monitor starting', correlationId);
+      logger.info('BOOT', 'Checking backend', correlationId);
+      logger.info('BOOT', 'Starting Agent', correlationId);
+      discoveryState.agentStatus = '🟢 ONLINE';
+      logger.info('AGENT', 'Agent started', correlationId);
+      isAgentOnline = true;
+    } else {
+      logger.info('AGENT', 'Reusing active Agent', correlationId);
+    }
   } else {
-    logger.info('AGENT', 'Reusing active Agent', correlationId);
+    discoveryState.agentStatus = '🔴 NÃO DETECTADO';
+    discoveryState.networkStatus = '🔴 OFFLINE';
+    discoveryState.discoveryStatus = '🔴 AGUARDANDO AGENTE WINDOWS';
+    isAgentOnline = false;
+    logger.warn('AGENT', 'Software Nexus Agent não está instalado ou em execução no Windows (porta 8080). Instale e execute o agente no Windows para escanear a rede local.', correlationId);
   }
 
   // 2. [RUNTIME]
@@ -714,18 +729,19 @@ function saveConfig(cfg) {
   }
 }
 
-// Re-registers all saved cameras into Go2RTC
+// Re-registers all saved cameras into Go2RTC with hybrid pipeline (Direct + Transcode fallback)
 async function registerAllStreamsWithGo2Rtc() {
   const cfg = loadConfig();
   if (!cfg.cameras || cfg.cameras.length === 0) return;
-  console.log(`[Go2RTC Adapter] Sincronizando ${cfg.cameras.length} câmera(s) com o Go2RTC...`);
+  console.log(`[Go2RTC Adapter] Sincronizando ${cfg.cameras.length} câmera(s) com o Go2RTC (Pipeline Direta + Transcode)...`);
   for (const cam of cfg.cameras) {
     if (!cam.rtspUrl || !cam.streamId) continue;
     try {
-      await fetch(`${GO2RTC_API}/streams?name=${encodeURIComponent(cam.streamId)}&src=${encodeURIComponent(cam.rtspUrl)}`, {
-        method: 'PUT'
-      });
-      console.log(`[Go2RTC Adapter] Stream '${cam.streamId}' registrado.`);
+      const directSrc = cam.rtspUrl;
+      const transcodeSrc = `ffmpeg:${cam.rtspUrl}#video=h264#audio=pcma`;
+      const url = `${GO2RTC_API}/streams?name=${encodeURIComponent(cam.streamId)}&src=${encodeURIComponent(directSrc)}&src=${encodeURIComponent(transcodeSrc)}`;
+      await fetch(url, { method: 'PUT' });
+      console.log(`[Go2RTC Adapter] Stream '${cam.streamId}' registrado com pipeline híbrida.`);
     } catch (err) {
       console.warn(`[Go2RTC Adapter] Não foi possível registrar '${cam.streamId}' no Go2RTC: ${err.message}`);
     }
@@ -734,9 +750,12 @@ async function registerAllStreamsWithGo2Rtc() {
 
 // 0. HEALTH CHECK REAL
 app.get('/api/health', (req, res) => {
+  const isPhysical = isPhysicalWindowsAgent();
   res.json({
     status: 'ok',
     backend: true,
+    isWindowsAgent: isPhysical,
+    executionMode: getExecutionMode(),
     timestamp: new Date().toISOString(),
     discoveryState
   });
@@ -754,7 +773,7 @@ app.get('/api/agent/status', (req, res) => {
   });
 });
 
-// Helper for on-demand stream registration with Go2RTC
+// Helper for on-demand stream registration with Go2RTC with hybrid pipeline (Direct + Transcode)
 async function registerSingleStreamWithGo2Rtc(streamId) {
   const cfg = loadConfig();
   const cam = cfg.cameras.find(c => c.streamId === streamId || c.id === streamId);
@@ -764,13 +783,15 @@ async function registerSingleStreamWithGo2Rtc(streamId) {
   }
   try {
     console.log(`[CAMERA] Selected: ${cam.id}`);
-    console.log(`[RTSP] Starting connection`);
-    console.log(`[GO2RTC] Starting selected stream: ${cam.streamId}`);
+    console.log(`[RTSP] Starting connection: ${cam.rtspUrl}`);
+    console.log(`[GO2RTC] Starting selected stream with hybrid pipeline: ${cam.streamId}`);
     
-    await fetch(`${GO2RTC_API}/streams?name=${encodeURIComponent(cam.streamId)}&src=${encodeURIComponent(cam.rtspUrl)}`, {
-      method: 'PUT'
-    });
-    console.log(`[Go2RTC Adapter] Stream '${cam.streamId}' registrado dinamicamente.`);
+    const directSrc = cam.rtspUrl;
+    const transcodeSrc = `ffmpeg:${cam.rtspUrl}#video=h264#audio=pcma`;
+    const url = `${GO2RTC_API}/streams?name=${encodeURIComponent(cam.streamId)}&src=${encodeURIComponent(directSrc)}&src=${encodeURIComponent(transcodeSrc)}`;
+
+    await fetch(url, { method: 'PUT' });
+    console.log(`[Go2RTC Adapter] Stream '${cam.streamId}' registrado dinamicamente com pipeline híbrida.`);
     return true;
   } catch (err) {
     console.error(`[Go2RTC Adapter] Erro ao registrar stream dinamicamente: ${err.message}`);
@@ -886,21 +907,23 @@ app.post('/api/cameras/discover/full', async (req, res) => {
 
   logger.info('SCAN', `Network interface: ${selectedName} (${selectedIp})`, correlationId);
 
+  const isPhysical = isPhysicalWindowsAgent();
+
   let networkAccess = 'AVAILABLE';
-  if (executionMode === 'AI_STUDIO_PREVIEW' || !isPrivateLan) {
+  if (!isPhysical || executionMode === 'AI_STUDIO_PREVIEW' || !isPrivateLan) {
     networkAccess = 'UNAVAILABLE';
   }
   logger.info('SCAN', `Network access: ${networkAccess}`, correlationId);
 
   // Redefinir status no backend para os indicados exatamente de acordo com as regras solicitadas
-  discoveryState.agentStatus = '🟢 ONLINE';
-  discoveryState.networkStatus = networkAccess === 'AVAILABLE' ? '🟢 ONLINE' : '🔴 OFFLINE';
-  discoveryState.discoveryStatus = networkAccess === 'AVAILABLE' ? '🟢 READY' : '🔴 BLOQUEADO (SEM LAN)';
+  discoveryState.agentStatus = isPhysical ? '🟢 ONLINE' : '🔴 NÃO DETECTADO';
+  discoveryState.networkStatus = (isPhysical && networkAccess === 'AVAILABLE') ? '🟢 ONLINE' : '🔴 OFFLINE';
+  discoveryState.discoveryStatus = (isPhysical && networkAccess === 'AVAILABLE') ? '🟢 READY' : '🔴 AGUARDANDO AGENTE WINDOWS';
 
   // Broadcast novos status via WebSocket imediatamente
   broadcast({
     type: 'agent_status_raw',
-    agentStatus: '🟢 ONLINE',
+    agentStatus: discoveryState.agentStatus,
     networkStatus: discoveryState.networkStatus,
     discoveryStatus: discoveryState.discoveryStatus
   });
@@ -1053,11 +1076,22 @@ function parseSdp(sdpText) {
     if (line.startsWith('m=')) {
       const parts = line.substring(2).split(' ');
       currentMedia = parts[0]; // 'video' ou 'audio'
+      const formats = parts.slice(3);
+      if (currentMedia === 'video') {
+        // Standard static payload types (RFC 3551): 26 = JPEG / MJPEG
+        if (formats.includes('26') && videoCodec === 'UNKNOWN') {
+          videoCodec = 'JPEG';
+        }
+      } else if (currentMedia === 'audio') {
+        // Standard static payload types (RFC 3551): 0 = PCMU, 8 = PCMA
+        if (formats.includes('0') && audioCodec === 'NONE') audioCodec = 'PCMU';
+        if (formats.includes('8') && audioCodec === 'NONE') audioCodec = 'PCMA';
+      }
     } else if (line.startsWith('a=rtpmap:')) {
       const match = line.match(/^a=rtpmap:(\d+)\s+([^/]+)/i);
       if (match) {
         const payloadType = match[1];
-        const codecName = match[2].toUpperCase();
+        let codecName = match[2].toUpperCase().trim();
         rtpMap[payloadType] = { media: currentMedia, codec: codecName };
         if (currentMedia === 'video') {
           if (videoCodec === 'UNKNOWN') videoCodec = codecName;
@@ -1324,31 +1358,81 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
   });
 }
 
-function checkWebRtcCodecSupport(videoCodec, audioCodec) {
-  const supportedVideos = ['H264', 'VP8', 'VP9', 'AV1'];
-  const maybeSupported = ['H265', 'HEVC'];
-  
-  const videoUpper = videoCodec.toUpperCase();
-  const isVideoSupported = supportedVideos.includes(videoUpper);
-  const isMaybeSupported = maybeSupported.includes(videoUpper);
-  
-  if (!isVideoSupported && !isMaybeSupported) {
-    return {
-      compatible: false,
-      error: 'CODEC_MISMATCH',
-      message: `RTSP conectado, mas o codec anunciado pela câmera (${videoCodec}) não é compatível com WebRTC nativo.`
-    };
-  }
+function normalizeCodec(codec) {
+  if (!codec || typeof codec !== 'string') return 'UNKNOWN';
+  const clean = codec.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (clean.includes('H264') || clean.includes('AVC')) return 'H264';
+  if (clean.includes('H265') || clean.includes('HEVC')) return 'H265';
+  if (clean.includes('JPEG') || clean.includes('MJPEG') || clean.includes('MJPG')) return 'MJPEG';
+  if (clean.includes('MPEG4') || clean.includes('MP4V')) return 'MPEG4';
+  if (clean.includes('VP8')) return 'VP8';
+  if (clean.includes('VP9')) return 'VP9';
+  if (clean.includes('AV1')) return 'AV1';
+  return clean || 'UNKNOWN';
+}
 
-  if (isMaybeSupported) {
+function normalizeAudioCodec(codec) {
+  if (!codec || typeof codec !== 'string') return 'NONE';
+  const clean = codec.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (clean.includes('PCMA') || clean.includes('G711A') || clean.includes('ALAW')) return 'PCMA';
+  if (clean.includes('PCMU') || clean.includes('G711U') || clean.includes('ULAW')) return 'PCMU';
+  if (clean.includes('OPUS')) return 'OPUS';
+  if (clean.includes('AAC') || clean.includes('MP4A')) return 'AAC';
+  if (clean.includes('G726')) return 'G726';
+  if (clean.includes('PCM')) return 'PCM';
+  return clean || 'NONE';
+}
+
+function checkWebRtcCodecSupport(videoCodec, audioCodec) {
+  const normVideo = normalizeCodec(videoCodec);
+  const normAudio = normalizeAudioCodec(audioCodec);
+
+  const nativeVideos = ['H264', 'VP8', 'VP9', 'AV1'];
+  const transcodeVideos = ['H265', 'MJPEG', 'MPEG4'];
+
+  // Codecs nativos do WebRTC (H.264, VP8, VP9, AV1)
+  if (nativeVideos.includes(normVideo)) {
+    const audioNotice = ['AAC', 'G726', 'PCM'].includes(normAudio)
+      ? `Áudio (${normAudio}) será transcodificado automaticamente para PCMA/Opus pela pipeline do Go2RTC.`
+      : null;
+
     return {
       compatible: true,
-      warning: true,
-      message: `Codec ${videoCodec} detectado. Este codec pode não funcionar em todos os navegadores. Recomenda-se usar H.264 para máxima compatibilidade.`
+      pipeline: 'passthrough',
+      videoCodec: normVideo,
+      audioCodec: normAudio,
+      rawVideoCodec: videoCodec,
+      rawAudioCodec: audioCodec,
+      warning: !!audioNotice,
+      message: audioNotice || `Codec ${normVideo} anunciado é 100% nativo e compatível com a pipeline direta do Go2RTC.`
     };
   }
 
-  return { compatible: true };
+  // Codecs tratados pela pipeline de transcodificação FFmpeg do Go2RTC (H.265 / HEVC, MJPEG, MPEG-4)
+  if (transcodeVideos.includes(normVideo)) {
+    return {
+      compatible: true,
+      pipeline: 'transcode',
+      videoCodec: normVideo,
+      audioCodec: normAudio,
+      rawVideoCodec: videoCodec,
+      rawAudioCodec: audioCodec,
+      warning: true,
+      message: `Codec ${videoCodec} (${normVideo}) detectado. Pipeline do Go2RTC configurada com transcodificação sob demanda (H.264/WebRTC).`
+    };
+  }
+
+  // Codec genérico ou não catalogado: a pipeline híbrida garantirá o fallback
+  return {
+    compatible: true,
+    pipeline: 'transcode-fallback',
+    videoCodec: normVideo,
+    audioCodec: normAudio,
+    rawVideoCodec: videoCodec,
+    rawAudioCodec: audioCodec,
+    warning: true,
+    message: `Codec anunciado (${videoCodec || 'Desconhecido'}) integrado à pipeline híbrida do Go2RTC.`
+  };
 }
 
 // 3. TESTE DE CONEXÃO RTSP COM VERIFICAÇÃO TCP REAL
@@ -1451,13 +1535,14 @@ app.post('/api/cameras/diagnose', async (req, res) => {
     // Se houver aviso (ex: H265), passamos para o frontend
     const warning = codecSupport.warning ? codecSupport.message : null;
 
-    // Etapa 4: Registrar ou atualizar stream no Go2RTC
+    // Etapa 4: Registrar ou atualizar stream no Go2RTC com pipeline híbrida
     if (streamId) {
       try {
-        await fetch(`${GO2RTC_API}/streams?name=${encodeURIComponent(streamId)}&src=${encodeURIComponent(rtspUrl)}`, {
-          method: 'PUT'
-        });
-        logger.info('GO2RTC', `Stream '${streamId}' registrado/atualizado no Go2RTC para diagnóstico.`, correlationId);
+        const directSrc = rtspUrl;
+        const transcodeSrc = `ffmpeg:${rtspUrl}#video=h264#audio=pcma`;
+        const diagUrl = `${GO2RTC_API}/streams?name=${encodeURIComponent(streamId)}&src=${encodeURIComponent(directSrc)}&src=${encodeURIComponent(transcodeSrc)}`;
+        await fetch(diagUrl, { method: 'PUT' });
+        logger.info('GO2RTC', `Stream '${streamId}' registrado/atualizado no Go2RTC com pipeline híbrida (Direct + Transcode).`, correlationId);
       } catch (err) {
         logger.warn('GO2RTC', `Aviso ao registrar stream no Go2RTC: ${err.message}`, correlationId);
       }

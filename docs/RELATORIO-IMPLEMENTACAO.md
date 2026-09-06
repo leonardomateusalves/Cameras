@@ -452,3 +452,74 @@ NÃO PRONTO PARA BUILD
 ```
 
 *(O código-fonte foi auditado, corrigido e atende a todos os requisitos de segurança e arquitetura. O status permanece 'NÃO PRONTO PARA BUILD' até que o executável seja instalado e validado com câmeras físicas em um ambiente Windows real).*
+
+---
+
+## 37. Atualizações Recentes: Melhoria de Logs (Falha de Detecção)
+
+- [x] O estado principal em `App.tsx` foi atualizado para registrar logs exatos (na estrutura `bootState.logs`) quando o Nexus Agent não é detectado.
+- [x] Mensagens de falha na UI agora explicam os motivos de timeout, recusa de conexão na porta 8080, e orientam o usuário a verificar o Firewall do Windows.
+- [x] A aplicação não fica mais em estado silencioso quando há interrupção no handshake WebSocket/HTTP com o backend.
+
+---
+
+## 38. Diagnóstico de Módulos (Visão Geral do Projeto)
+
+Abaixo, o status expandido sobre a completude da arquitetura e integrações:
+
+- **1. Telemetria e UI (HUD)**: 🟢 Concluído (HUD tático e logs visíveis em caso de falha de conexão).
+- **2. Agente Local (Node.js)**: 🟢 Concluído (Código pronto para empacotamento, incluindo escaneamento ONVIF/WS-Discovery UDP).
+- **3. Go2RTC Engine**: 🟢 Concluído (Isolamento em porta 1984, rotas locais configuradas em `go2rtc.yaml`).
+- **4. Segurança (CORS/PNA)**: 🟢 Concluído (Preflight interceptado e headers de acesso privado configurados).
+- **5. Build & Deployment**: 🟡 Pendente (Processo de compilação em .exe, instalação, e testes físicos na LAN real).
+
+---
+
+## 39. Guia de Interpretação dos Logs (Terminal HUD)
+
+O sistema possui um **Terminal de Eventos (Logs)** integrado na interface web, criado especificamente para ajudar a diagnosticar problemas de comunicação entre a interface web e o agente local (`.exe`).
+
+### Como acessar e usar os Logs:
+1. Clique no botão **"Logs"** na barra de ações rápidas para abrir o modal flutuante.
+2. Cada linha de log possui um prefixo colorido que indica a natureza do evento:
+   - <span style="color: cyan;">[API / INFO]</span>: Operações normais do sistema e chamadas HTTP bem-sucedidas.
+   - <span style="color: emerald;">[SYNCED]</span>: Indica que um dado foi sincronizado com sucesso entre o Agente Local e a Interface Web.
+   - <span style="color: pink;">[ERROR]</span>: Falhas críticas. Clique no evento de erro para expandir a janela e ver o *Stack Trace* (rastreio do erro) detalhado.
+   - <span style="color: orange;">[AGENT]</span>: Eventos internos relacionados à saúde do processo do Express ou Go2RTC.
+   - <span style="color: blue;">[NETWORK / ONVIF]</span>: Tentativas de varredura UDP na rede local e negociação RTSP.
+
+### Problemas Comuns Identificáveis nos Logs:
+- **`ERR_CONNECTION_REFUSED` (Porta 8080)**: Ocorre quando a versão Web não consegue encontrar o Agente Local. **Solução:** Você deve garantir que o aplicativo `.exe` (Windows Local Agent) está aberto e rodando em segundo plano no Windows.
+- **`TIMEOUT` na Varredura ONVIF**: Significa que a porta UDP 3702 pode estar bloqueada pelo Firewall do Windows, ou que as câmeras estão em uma sub-rede diferente (VLAN).
+- **Go2RTC Stream Falhou (`500 Internal Server Error` no WebRTC)**: Ocorre se o Go2RTC não conseguir alcançar a URL RTSP da câmera, geralmente devido a credenciais inválidas ou câmera offline.
+
+---
+
+## 40. Integração: Versão Web (SaaS) vs. Agente Local (.exe) Windows
+
+Devido a limitações estritas de segurança dos navegadores modernos (Sandboxing, CORS e bloqueio de sockets UDP nativos), **a interface Web isolada não consegue buscar câmeras na rede local (WS-Discovery) ou conectar diretamente em fluxos RTSP brutos**.
+
+### O Papel do `.exe` (Sincronização ODM/ONVIF)
+Para o sistema funcionar completamente:
+1. **Instalação Obrigatória:** O usuário precisa baixar e instalar o `CFTV-Setup.exe` na mesma máquina que está acessando a rede das câmeras.
+2. **Ponte Local:** O `.exe` roda em segundo plano e levanta um servidor em `127.0.0.1:8080`.
+3. **Sincronização:** Quando você acessa a versão Web, ela detecta automaticamente essa porta local. A partir desse momento, a interface Web comanda o `.exe` para fazer o trabalho pesado (enviar pacotes UDP de descoberta ONVIF/ODM, testar conexões TCP, gravar credenciais criptografadas e processar o vídeo).
+4. **Resumo:** O `.exe` atua como o "motor" (backend) e a "interface web" atua como o controle remoto (frontend). Se o `.exe` estiver fechado, a interface web entra no modo `OFFLINE`.
+
+---
+
+## 41. Go2RTC: Fluxos, Codecs e Status de Mídia
+
+O **Go2RTC** foi escolhido como motor de mídia devido à sua capacidade de contornar transcodificação intensiva na CPU, repassando (passthrough) o codec nativo da câmera diretamente para o navegador através de WebRTC.
+
+### Informações sobre Codecs:
+- **H.264:** Suporte universal. O Go2RTC encapsula o H.264 direto da câmera para o WebRTC. Isso resulta em consumo de CPU quase zero no servidor (Agente Local) e baixíssima latência (< 0.5s).
+- **H.265 (HEVC):** O Go2RTC suporta ingestão de H.265. Porém, o suporte a reprodução de H.265 via WebRTC no navegador depende estritamente do hardware do cliente (ex: funciona nativamente no Safari e Edge modernos com aceleração de hardware, mas pode falhar no Chrome sem as devidas flags ativadas). 
+  - *Mitigação:* Caso as câmeras estejam configuradas para H.265 e a tela fique preta no navegador, recomenda-se configurar o "Sub-Stream" da câmera (no painel da fabricante) para H.264.
+
+### Status de Mídia (Interpretando conexões no Go2RTC):
+Quando você visualizar os logs do Player WebRTC, poderá identificar as seguintes fases:
+1. **`SDP Offer Gerado`**: O React criou uma intenção de receber vídeo.
+2. **`POST /api/webrtc`**: O Agente local encaminha o SDP para o Go2RTC.
+3. **`SDP Answer Recebido`**: O Go2RTC aceitou a conexão e sabe como traduzir o RTSP.
+4. **`ICE Connected`**: A conexão P2P local (WebRTC) foi estabelecida com sucesso. A partir desse momento, os quadros de vídeo (H.264/H.265) e áudio (AAC/Opus) começam a fluir para o componente de vídeo na UI.

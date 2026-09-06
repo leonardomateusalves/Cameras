@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import JSZip from 'jszip';
 import { Download, Copy, Check, Terminal, FileCode, X, Cloud, Monitor } from 'lucide-react';
-import { GlassCard } from './GlassCard';
+import { GlassCard } from '../ui/GlassCard';
 
 interface ProjectExporterProps {
   isOpen: boolean;

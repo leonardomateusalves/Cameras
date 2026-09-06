@@ -1,34 +1,49 @@
 /**
  * ============================================================================
- * 🛡️ NEXUS RTSP MONITOR - ESTILOS GLOBAIS E TÁTICOS
+ * 🛡️ NEXUS RTSP MONITOR - ESTILOS GLOBAIS, TÁTICOS E VIDRO (GLASSMORPHISM)
  * ============================================================================
- * Este arquivo centraliza toda a estilização da aplicação SPA.
- * Organizado em seções bem definidas com comentários em Português.
+ * Guia de Estilização em Português:
+ * Este arquivo reúne todas as regras visuais do sistema.
+ * Cada seção abaixo contém comentários detalhados explicando:
+ * - Para que serve cada classe
+ * - Como alterar cores, tamanhos, bordas e efeitos
+ * - Onde cada estilo é aplicado na aplicação
+ * ============================================================================
  */
 
 @import "tailwindcss";
 
 /* ============================================================================
- * 1. CONFIGURAÇÃO DE FONTES E TEMA
- * ============================================================================ */
+ * 1. CONFIGURAÇÃO DE FONTES E TEMA (TYPOGRAPHY & THEME)
+ * ============================================================================
+ * Define as fontes táticas e militares usadas na interface:
+ * - Inter: Fonte padrão de leitura e corpo de texto.
+ * - Orbitron: Títulos principais, códigos e numerações de alta tecnologia.
+ * - Rajdhani: Labels táticas, botões, chips e badges do sistema.
+ */
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Orbitron", sans-serif;
   --font-tactical: "Rajdhani", sans-serif;
 }
 
+/* Utilitário para aplicar a fonte Orbitron diretamente em qualquer elemento */
 .font-orbitron {
   font-family: 'Orbitron', sans-serif !important;
 }
 
+/* Utilitário para aplicar a fonte Rajdhani diretamente em qualquer elemento */
 .font-rajdhani {
   font-family: 'Rajdhani', sans-serif !important;
 }
 
 
 /* ============================================================================
- * 2. RESET E FUNDO GLOBAL
- * ============================================================================ */
+ * 2. RESET E FUNDO GLOBAL (DARK SCI-FI CANVAS)
+ * ============================================================================
+ * Configura o plano de fundo infinito da aplicação com gradientes radiais
+ * suaves em tons de azul ciano e escuro militar, garantindo alto contraste.
+ */
 * {
   box-sizing: border-box;
 }
@@ -37,17 +52,18 @@ html, body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  background-color: #02050c;
-  color: #e2e8f0;
+  background-color: #02050c; /* Cor base de fundo ultra escuro */
+  color: #e2e8f0;            /* Cor padrão do texto (zinc-200) */
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  /* Gradientes de iluminação ambiente cibernética */
   background-image:
     radial-gradient(circle at 20% 15%, rgba(0, 243, 255, 0.05), transparent 45%),
     radial-gradient(circle at 80% 85%, rgba(0, 140, 255, 0.04), transparent 50%),
     radial-gradient(ellipse at center, rgba(5, 11, 24, 0.6) 0%, rgba(2, 5, 12, 0.98) 100%);
   background-size: 100% 100%;
-  background-attachment: fixed;
+  background-attachment: scroll;
 }
 
 button {
@@ -57,22 +73,27 @@ button {
 
 
 /* ============================================================================
- * 3. SCROLLBAR CIBERNÉTICA
- * ============================================================================ */
+ * 3. SCROLLBAR TÁTICA CIBERNÉTICA (CYBER SCROLLBAR)
+ * ============================================================================
+ * Barra de rolagem estilizada ultrafina (5px) com acabamento neon ciano.
+ */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
 
+/* Trilho de fundo da scrollbar */
 ::-webkit-scrollbar-track {
   background: rgba(2, 5, 12, 0.85);
 }
 
+/* Cursor/polegar da barra de rolagem */
 ::-webkit-scrollbar-thumb {
   background: rgba(0, 243, 255, 0.25);
   border-radius: 2px;
 }
 
+/* Cursor da barra de rolagem ao passar o mouse */
 ::-webkit-scrollbar-thumb:hover {
   background: #00f3ff;
   box-shadow: 0 0 8px #00f3ff;
@@ -80,8 +101,11 @@ button {
 
 
 /* ============================================================================
- * 4. CANVAS DE PARTÍCULAS (BACKGROUND)
- * ============================================================================ */
+ * 4. CANVAS DE PARTÍCULAS / MALHA NEURAL (BACKGROUND MATRIX)
+ * ============================================================================
+ * Fundo animado interativo de nós e partículas que reagem à proximidade do mouse.
+ * Fica fixo no fundo da tela com pointer-events desabilitado para não bloquear cliques.
+ */
 .cftv-particle-canvas {
   position: fixed;
   inset: 0;
@@ -89,21 +113,27 @@ button {
   height: 100%;
   z-index: 1;
   pointer-events: none;
+  opacity: 0.8;
 }
 
 
 /* ============================================================================
- * 5. LAYOUT ESTRUTURAL (APP.TSX)
- * ============================================================================ */
+ * 5. LAYOUT ESTRUTURAL E GRID DE CÂMERAS (LAYOUT & CAMERA MATRIX)
+ * ============================================================================
+ * Controla a área de exibição principal, o container das câmeras e o grid.
+ */
+
+/* Container raiz da aplicação */
 .cftv-app-root {
   min-height: 100vh;
   width: 100%;
   position: relative;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
+/* Viewport central onde ficam os cards de câmeras e o HUD de boot */
 .cftv-main-viewport {
   width: 100%;
   flex: 1;
@@ -129,6 +159,7 @@ button {
   }
 }
 
+/* Container de largura máxima adaptável para a lista de câmeras */
 .cftv-viewport-container {
   width: 100%;
   max-width: 100%;
@@ -139,6 +170,7 @@ button {
   min-width: 0;
 }
 
+/* Grade de câmeras padrão (1 coluna no mobile, 2 colunas em telas médias/largas) */
 .cftv-camera-grid {
   width: 100%;
   display: grid;
@@ -153,12 +185,14 @@ button {
   }
 }
 
+/* Grade quando uma câmera está focada em tela cheia/destaque */
 .cftv-camera-grid-focused {
   grid-template-columns: 1fr;
   max-width: 56rem;
   margin: 0 auto;
 }
 
+/* Invólucro individual de cada feed de vídeo */
 .cftv-camera-wrapper {
   width: 100%;
   min-width: 0;
@@ -168,20 +202,41 @@ button {
 
 
 /* ============================================================================
- * 6. MODAIS E FORMULÁRIOS
- * ============================================================================ */
-.cftv-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 9999; /* Máxima prioridade absoluta */
-  background-color: rgba(0, 0, 0, 0.85);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  overflow-y: auto;
+ * 6. CARDS TÁTICOS E EFEITO VIDRO (GLASSMORPHISM & TACTICAL CARDS)
+ * ============================================================================
+ * Estilos para o GlassCard, cantoneiras chanfradas e realces de vidro tático.
+ */
+
+/* Efeito de hover translúcido suave em cards de vidro */
+.efeito-glass-hover {
+  background-color: rgba(255, 255, 255, 0.03); /* Fundo quase transparente */
+  border: 1px solid rgba(255, 255, 255, 0.1);    /* Borda sutil */
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.3s ease-in-out;
 }
 
+.efeito-glass-hover:hover {
+  background-color: rgba(255, 255, 255, 0.08); /* Clareia suavemente */
+  border: 1px solid rgba(0, 243, 255, 0.4);     /* Realce de borda ciano */
+  box-shadow: 0 4px 20px rgba(0, 243, 255, 0.1); /* Brilho difuso atrás do card */
+}
+
+/* Card em foco com borda brilhante */
+.glass-card-focus {
+  border-color: rgba(0, 243, 255, 0.6) !important;
+  box-shadow: 0 0 25px rgba(0, 243, 255, 0.2), inset 0 0 15px rgba(0, 243, 255, 0.05) !important;
+}
+
+
+/* ============================================================================
+ * 7. FORMULÁRIOS, INPUTS E SELECTS (FORM CONTROLS)
+ * ============================================================================
+ * Inputs de texto e seletores suspensos estilizados com o tema tático escuro.
+ */
+
+/* Campo de texto padrão do sistema */
 .cftv-input {
   width: 100%;
   background-color: rgba(0, 0, 0, 0.6);
@@ -190,9 +245,10 @@ button {
   font-size: 0.875rem;
   color: #f4f4f5;
   outline: none;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+/* Select nativo customizado */
 .cftv-select {
   width: 100%;
   background-color: rgba(6, 12, 24, 0.9);
@@ -214,12 +270,14 @@ button {
   cursor: pointer;
 }
 
+/* Foco em inputs e selects */
 .cftv-input:focus,
 .cftv-select:focus {
   border-color: #00f3ff;
   box-shadow: 0 0 10px rgba(0, 243, 255, 0.25);
 }
 
+/* Itens internos do select */
 .cftv-select option,
 select option {
   background-color: #060c18 !important;
@@ -239,10 +297,12 @@ select option {
 
 
 /* ============================================================================
- * 7. BOTÕES E COMPONENTES INTERATIVOS
- * ============================================================================ */
+ * 8. BOTÕES TÁTICOS E AÇÕES DO SISTEMA (TACTICAL BUTTONS)
+ * ============================================================================
+ * Variantes de botões militares: Primário, Ação Sólida, Stealth, FAB e Ícones.
+ */
 
-/* Botão Primário Tático */
+/* Botão Primário Ciano Tático */
 .cftv-btn-primary {
   display: inline-flex;
   align-items: center;
@@ -256,43 +316,28 @@ select option {
   background-color: rgba(0, 243, 255, 0.2);
   color: #67e8f9;
   border: 1px solid rgba(0, 243, 255, 0.4);
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .cftv-btn-primary:hover {
   background-color: rgba(0, 243, 255, 0.3);
+  border-color: rgba(0, 243, 255, 0.8);
 }
 
-/* Botão Flutuante (FAB) Estilo Glasscard Redondo */
-.cftv-btn-fab {
+/* Tactical Command Center - Fixed position container for global FABs */
+.cftv-command-center {
   position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  z-index: 50;
-  width: 3.5rem;
-  height: 3.5rem;
-  border-radius: 9999px;
+  bottom: 2.5rem;
+  right: 2.5rem;
+  z-index: 9999;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #0891b2; /* Cyan 600 sólido */
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4), 0 0 20px rgba(8, 145, 178, 0.3);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-direction: row;
+  gap: 1.25rem;
+  pointer-events: auto;
+  padding: 0.5rem;
 }
 
-.cftv-btn-fab:hover {
-  background: #06b6d4; /* Cyan 500 */
-  transform: translateY(-2px) scale(1.05);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 25px rgba(6, 182, 212, 0.4);
-}
-
-.cftv-btn-fab:active {
-  transform: scale(0.95);
-}
-
-/* Botão Roxo (PTZ) */
+/* Botão Roxo / PTZ */
 .cftv-btn-purple {
   display: inline-flex;
   align-items: center;
@@ -352,7 +397,7 @@ select option {
   border-color: rgba(0, 243, 255, 0.5);
 }
 
-/* Botão de Ação Sólido */
+/* Botão de Ação Sólido com Alto Contraste */
 .cftv-btn-action {
   display: inline-flex;
   align-items: center;
@@ -375,7 +420,7 @@ select option {
   background-color: #67e8f9;
 }
 
-/* Botão Prismático Tático (HUD Cyberpunk / High-Tech CFTV) */
+/* Botão Prismático Chanfrado Cyberpunk */
 .cftv-btn-prismatic {
   position: relative;
   display: inline-flex;
@@ -409,17 +454,43 @@ select option {
 
 .cftv-btn-prismatic:hover {
   background: linear-gradient(135deg, #38ef7d 0%, #00f3ff 50%, #00b8d4 100%);
-  box-shadow: none;
   transform: translateY(-2px) scale(1.02);
   color: #020617;
 }
 
 .cftv-btn-prismatic:active {
   transform: translateY(0) scale(0.98);
-  box-shadow: none;
 }
 
-/* Botão de Contorno */
+/* Botão Stealth Chanfrado Sem Borda */
+.cftv-btn-tactical-stealth {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.15rem;
+  background-color: rgba(0, 0, 0, 0.1);
+  color: #d4d4d8;
+  border: none !important;
+  outline: none;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  transition: background-color 0.2s ease, color 0.2s ease;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cftv-btn-tactical-stealth:hover {
+  background-color: rgba(0, 0, 0, 0.2);
+  color: #ffffff;
+}
+
+.cftv-btn-tactical-stealth:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Botão de Contorno Suave */
 .cftv-btn-outline {
   display: inline-flex;
   align-items: center;
@@ -442,7 +513,7 @@ select option {
   color: #ffffff;
 }
 
-/* Chip OSD */
+/* Chip de On-Screen Display (OSD sobreposto aos vídeos) */
 .cftv-osd-chip {
   display: inline-flex;
   align-items: center;
@@ -459,29 +530,27 @@ select option {
   font-size: 10px;
 }
 
+
 /* ============================================================================
- * 📦 MODAIS E CAIXAS DE DIÁLOGO
- * ============================================================================ */
+ * 9. MODAIS E CAIXAS DE DIÁLOGO (MODAL DIALOGS)
+ * ============================================================================
+ * Telas de sobreposição, modais de cadastro de câmeras e controles PTZ.
+ */
 
-/* Estado Base e Hover sugerido pela IA para elementos clicáveis / cards de vidro */
-.efeito-glass-hover {
-  background-color: rgba(255, 255, 255, 0.03); /* Fundo quase transparente */
-  border: 1px solid rgba(255, 255, 255, 0.1); /* Borda muito sutil */
-  border-radius: 12px;
-  padding: 16px;
-  cursor: pointer;
-  
-  /* O SEGREDO: Define que qualquer mudança de estilo levará 0.3 segundos para acontecer */
-  transition: all 0.3s ease-in-out; 
+/* Fundo escurecido que cobre toda a tela */
+.cftv-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background-color: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  overflow-y: auto;
 }
 
-.efeito-glass-hover:hover {
-  background-color: rgba(255, 255, 255, 0.08); /* Fica ligeiramente mais claro */
-  border: 1px solid rgba(168, 85, 247, 0.4); /* Borda ganha cor (Ex: Roxo translúcido) */
-  box-shadow: 0 4px 20px rgba(168, 85, 247, 0.1); /* Um brilho suave atrás do cartão */
-}
-
-/* Base do modal principal adaptada com a mesma lógica translúcida clara */
+/* Caixa de vidro do modal */
 .cftv-glass-modal {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.01) 100%) !important;
   backdrop-filter: blur(24px) !important;
@@ -495,18 +564,16 @@ select option {
 
 .cftv-glass-modal:hover {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%) !important;
-  border: 1px solid rgba(0, 243, 255, 0.4) !important; /* Brilho ciano no hover do modal */
+  border: 1px solid rgba(0, 243, 255, 0.4) !important;
   border-top: 1px solid rgba(0, 243, 255, 0.6) !important;
   border-left: 1px solid rgba(0, 243, 255, 0.6) !important;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8), 0 4px 20px rgba(0, 243, 255, 0.15) !important;
 }
 
+/* Invólucro com limite de altura e rolagem */
 .cftv-modal-wrapper {
   width: 100%;
-  margin-left: 1rem;
-  margin-right: 1rem;
-  margin-top: auto;
-  margin-bottom: auto;
+  margin: auto 1rem;
   max-height: 90vh;
   overflow-y: auto;
   scrollbar-width: none;
@@ -517,14 +584,10 @@ select option {
   display: none;
 }
 
-.cftv-modal-wrapper-sm {
-  max-width: 24rem;
-}
+.cftv-modal-wrapper-sm { max-width: 24rem; }
+.cftv-modal-wrapper-md { max-width: 36rem; }
 
-.cftv-modal-wrapper-md {
-  max-width: 36rem;
-}
-
+/* Cabeçalho, Corpo e Rodapé do Modal */
 .cftv-modal-header {
   display: flex;
   align-items: center;
@@ -561,9 +624,12 @@ select option {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+
 /* ============================================================================
- * 8. TERMINAL DE DIAGNÓSTICO INTEGRADO DO MONITOR (CFTV)
- * ============================================================================ */
+ * 10. TERMINAL DE DIAGNÓSTICO E LOGS (TELEMETRY & LOG VIEWER)
+ * ============================================================================
+ * Console de logs com suporte a timestamps, tags coloridas e auto-rolagem.
+ */
 .cftv-terminal-container {
   position: relative;
   display: flex;
@@ -579,7 +645,7 @@ select option {
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%) !important;
 }
 
-/* Cantoneira tática ciano superior direita igual ao GlassCard */
+/* Cantoneira superior direita do terminal */
 .cftv-terminal-container::before {
   content: '';
   position: absolute;
@@ -660,7 +726,7 @@ select option {
   background-color: rgba(0, 0, 0, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.06);
   padding: 0.5rem;
-  font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
   font-size: 0.825rem;
   font-weight: 500;
   letter-spacing: 0.05em;
@@ -671,7 +737,6 @@ select option {
   border-radius: 4px;
   display: flex;
   flex-direction: column;
-  gap: 0px;
 }
 
 .cftv-terminal-log-row {
@@ -680,7 +745,7 @@ select option {
   align-items: flex-start;
   padding: 0.375rem 0.5rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease;
 }
 
 .cftv-terminal-log-row:last-child {
@@ -717,22 +782,23 @@ select option {
   animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 
+/* Indicadores de status do terminal */
 .cftv-status-online {
-  color: #34d399 !important; /* emerald-400 */
+  color: #34d399 !important; /* Esmeralda (Online) */
   white-space: nowrap;
   font-size: 0.75rem;
   font-weight: 700;
 }
 
 .cftv-status-pending {
-  color: #fbbf24 !important; /* amber-400 */
+  color: #fbbf24 !important; /* Âmbar (Pendente) */
   white-space: nowrap;
   font-size: 0.75rem;
   font-weight: 700;
 }
 
 .cftv-status-scanning {
-  color: #22d3ee !important; /* cyan-400 */
+  color: #22d3ee !important; /* Ciano pulsante (Escaneando) */
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   white-space: nowrap;
   font-size: 0.75rem;
@@ -764,34 +830,20 @@ select option {
   overflow-wrap: break-word;
 }
 
-/* Cores dos prefixos do log */
-.cftv-log-default {
-  color: #00f3ff !important; /* cyan */
-}
+/* Cores de categorias de log */
+.cftv-log-default   { color: #00f3ff !important; } /* Ciano */
+.cftv-log-network   { color: #34d399 !important; } /* Esmeralda */
+.cftv-log-discovery { color: #c084fc !important; } /* Roxo */
+.cftv-log-rtsp      { color: #fbbf24 !important; } /* Âmbar */
+.cftv-log-boot      { color: #60a5fa !important; } /* Azul */
+.cftv-log-error     { color: #f87171 !important; } /* Vermelho */
 
-.cftv-log-network {
-  color: #34d399 !important; /* emerald */
-}
-
-.cftv-log-discovery {
-  color: #c084fc !important; /* purple */
-}
-
-.cftv-log-rtsp {
-  color: #fbbf24 !important; /* amber */
-}
-
-.cftv-log-boot {
-  color: #60a5fa !important; /* blue */
-}
-
-.cftv-log-error {
-  color: #f87171 !important; /* red */
-}
 
 /* ============================================================================
- * 23. BARRA DE TÍTULO CUSTOMIZADA (NEXUS TITLEBAR)
- * ============================================================================ */
+ * 11. BARRA DE TÍTULO CUSTOMIZADA (NEXUS TITLEBAR)
+ * ============================================================================
+ * Barra superior da janela para suporte a Electron e desktop PWA.
+ */
 .nexus-titlebar {
   display: flex;
   align-items: center;
@@ -850,9 +902,197 @@ select option {
   transform: scale(0.95);
 }
 
+
 /* ============================================================================
- * 8. DASHBOARD DE INICIALIZAÇÃO E STATUS DO AGENTE
- * ============================================================================ */
+ * 12. RADAR PPI MILITAR E SONAR DE VARREDURA (MILITARY RADAR SCOPE)
+ * ============================================================================
+ * Animações e renderização do escopo de radar militar 360° circular.
+ */
+.cftv-military-radar-wrap {
+  user-select: none;
+}
+
+/* Moldura externa circular do radar */
+.cftv-military-radar-bezel {
+  background: radial-gradient(circle, #080f14 0%, #0d1620 80%, #050a0e 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 
+    0 16px 36px rgba(0, 0, 0, 0.9),
+    inset 0 1px 1.5px rgba(255, 255, 255, 0.1),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.8),
+    0 0 15px rgba(0, 243, 255, 0.05);
+}
+
+/* Tela interna de vidro do escopo */
+.cftv-military-radar-screen {
+  background: radial-gradient(circle at center, #04141b 0%, #020b10 60%, #000407 100%);
+  border: 1px solid rgba(0, 243, 255, 0.22);
+  box-shadow: 
+    inset 0 0 25px rgba(0, 0, 0, 0.95),
+    inset 0 0 12px rgba(0, 243, 255, 0.08);
+}
+
+/* Feixe varredor giratório 360° no sentido horário */
+.cftv-military-radar-sweeper {
+  animation: military-sweep-rotate 4s linear infinite;
+  transform-origin: center center;
+}
+
+.cftv-military-radar-trail {
+  background: conic-gradient(
+    from 305deg,
+    transparent 0deg,
+    rgba(2, 132, 199, 0.05) 15deg,
+    rgba(14, 165, 233, 0.28) 35deg,
+    rgba(0, 210, 255, 0.6) 50deg,
+    rgba(0, 243, 255, 0.9) 55deg,
+    transparent 55.1deg,
+    transparent 360deg
+  );
+  filter: blur(1px);
+}
+
+@keyframes military-sweep-rotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Aura tática difusa de pulso do radar */
+.cftv-radar-ping-aura {
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(0, 243, 255, 0.25) 0%, rgba(2, 132, 199, 0.08) 50%, transparent 75%);
+  filter: blur(8px);
+  animation: radar-bezel-aura 4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes radar-bezel-aura {
+  0%   { transform: scale(0.9);  opacity: 0.7; }
+  50%  { transform: scale(1.15); opacity: 0; }
+  100% { transform: scale(1.15); opacity: 0; }
+}
+
+
+/* ============================================================================
+ * 13. SINCRONIZAÇÃO DO SONAR COM OS GLASSCARDS DE ETAPA
+ * ============================================================================
+ * Sincroniza a passagem do feixe rotativo com o pulso luminoso de cada card:
+ * - 0.9s (90° / 3h): Feixe atinge a Etapa 3 (Direita)
+ * - 1.8s (180° / 6h): Feixe atinge a Etapa 2 (Centro)
+ * - 2.7s (270° / 9h): Feixe atinge a Etapa 1 (Esquerda)
+ */
+.cftv-glasscard-sonar-active.sonar-card-sync-1 {
+  animation: glasscard-sonar-pulse 3.6s cubic-bezier(0.2, 0.8, 0.3, 1) infinite;
+  animation-delay: 2.7s;
+}
+
+.cftv-glasscard-sonar-active.sonar-card-sync-2 {
+  animation: glasscard-sonar-pulse 3.6s cubic-bezier(0.2, 0.8, 0.3, 1) infinite;
+  animation-delay: 1.8s;
+}
+
+.cftv-glasscard-sonar-active.sonar-card-sync-3 {
+  animation: glasscard-sonar-pulse 3.6s cubic-bezier(0.2, 0.8, 0.3, 1) infinite;
+  animation-delay: 0.9s;
+}
+
+@keyframes glasscard-sonar-pulse {
+  0% {
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  }
+  8% {
+    border-color: rgba(0, 243, 255, 0.55);
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.6),
+      0 0 22px rgba(0, 243, 255, 0.25),
+      inset 0 1px 1px rgba(255, 255, 255, 0.15),
+      inset 0 0 15px rgba(0, 243, 255, 0.1);
+  }
+  22% {
+    border-color: rgba(0, 243, 255, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  }
+  100% {
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  }
+}
+
+/* Reflexo Especular de Vidro Fino ao ser Atingido pelo Feixe */
+.cftv-glass-sonar-shimmer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    120deg,
+    transparent 20%,
+    rgba(0, 243, 255, 0.05) 42%,
+    rgba(255, 255, 255, 0.22) 50%,
+    rgba(0, 243, 255, 0.08) 58%,
+    transparent 80%
+  );
+  opacity: 0;
+  z-index: 15;
+  transform: translateX(-100%);
+}
+
+.sonar-card-sync-1 .cftv-glass-sonar-shimmer {
+  animation: glass-sonar-sweep 3.6s cubic-bezier(0.2, 0.8, 0.3, 1) infinite;
+  animation-delay: 2.7s;
+}
+
+.sonar-card-sync-2 .cftv-glass-sonar-shimmer {
+  animation: glass-sonar-sweep 3.6s cubic-bezier(0.2, 0.8, 0.3, 1) infinite;
+  animation-delay: 1.8s;
+}
+
+.sonar-card-sync-3 .cftv-glass-sonar-shimmer {
+  animation: glass-sonar-sweep 3.6s cubic-bezier(0.2, 0.8, 0.3, 1) infinite;
+  animation-delay: 0.9s;
+}
+
+@keyframes glass-sonar-sweep {
+  0%   { opacity: 0; transform: translateX(-100%); }
+  3%   { opacity: 1; }
+  15%  { opacity: 1; transform: translateX(100%); }
+  20%  { opacity: 0; transform: translateX(100%); }
+  100% { opacity: 0; transform: translateX(100%); }
+}
+
+.cftv-sensor-aura {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cftv-sensor-pulse {
+  position: absolute;
+  inset: -6px;
+  border-radius: 1rem;
+  background: radial-gradient(circle, rgba(0, 243, 255, 0.15) 0%, transparent 70%);
+  animation: pulse-aura 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes pulse-aura {
+  0%, 100% { opacity: 0.4; transform: scale(0.96); }
+  50%      { opacity: 1;   transform: scale(1.04); }
+}
+
+
+/* ============================================================================
+ * 14. PAINEL DE BOOT E STATUS DE INICIALIZAÇÃO (BOOT HUD & STATUS ITEMS)
+ * ============================================================================
+ * Linhas de varredura, itens de status e tags do ambiente de boot.
+ */
+.cftv-status-row {
+  @apply flex items-center justify-between p-3.5 sm:px-4 sm:py-3 transition-colors duration-150 border-b border-zinc-800/60 last:border-b-0 hover:bg-white/[0.02];
+}
+
 .cftv-boot-container {
   @apply w-full max-w-lg mx-auto space-y-4 mt-4;
   font-family: var(--font-tactical);
@@ -872,16 +1112,8 @@ select option {
   @apply flex flex-col items-center gap-4 py-4;
 }
 
-.cftv-boot-scan-line {
-  @apply w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-500 to-transparent absolute top-0 left-0 animate-[scan_3s_linear_infinite] z-0;
-}
-
-@keyframes scan {
-  0% { top: 0%; opacity: 0; }
-  15% { opacity: 1; }
-  85% { opacity: 1; }
-  100% { top: 100%; opacity: 0; }
-}
+/* Linha de laser que percorre a tela durante o boot */
+/* Removed scan-line animation per user request */
 
 .cftv-boot-status-item {
   @apply flex items-center justify-between py-2.5 border-b border-zinc-800/30 last:border-0 relative z-10;
@@ -912,26 +1144,29 @@ select option {
 }
 
 .cftv-boot-log-line {
-  @apply text-[10px] font-mono flex gap-3 leading-tight;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  @apply text-[10px] flex gap-3 leading-tight font-mono;
   animation: fade-in-left 0.3s ease-out forwards;
 }
 
 @keyframes fade-in-left {
   from { opacity: 0; transform: translateX(-4px); }
-  to { opacity: 1; transform: translateX(0); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
 .cftv-boot-log-time {
-  @apply text-zinc-600 shrink-0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  @apply text-zinc-600 shrink-0 font-mono;
 }
 
 .cftv-boot-log-tag {
-  @apply px-1.5 rounded-[2px] text-[8px] font-bold uppercase shrink-0 min-w-[60px] text-center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  @apply px-1.5 rounded-[2px] text-[8px] font-bold uppercase shrink-0 min-w-[60px] text-center font-mono;
 }
 
-.tag-network { @apply bg-blue-500/10 text-blue-400 border border-blue-500/20; }
-.tag-onvif { @apply bg-emerald-500/10 text-emerald-400 border border-emerald-500/20; }
-.tag-agent { @apply bg-amber-500/10 text-amber-400 border border-amber-500/20; }
+/* Tags de log do boot */
+.tag-network   { @apply bg-blue-500/10 text-blue-400 border border-blue-500/20; }
+.tag-onvif     { @apply bg-emerald-500/10 text-emerald-400 border border-emerald-500/20; }
+.tag-agent     { @apply bg-amber-500/10 text-amber-400 border border-amber-500/20; }
 .tag-discovery { @apply bg-cyan-500/10 text-cyan-400 border border-cyan-500/20; }
-
 

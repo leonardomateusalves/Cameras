@@ -1,6 +1,6 @@
 import React from 'react';
-import { CameraStream } from '../types';
-import { GlassCard } from './GlassCard';
+import { CameraStream } from '../../types';
+import { GlassCard } from '../ui/GlassCard';
 import { Shield, Eye, HelpCircle, Network, HardDrive, Cpu } from 'lucide-react';
 
 interface CameraSelectorProps {
