@@ -606,12 +606,16 @@ async function startAutomaticDiscoverySequence(customCorrelationId = '') {
       }
 
       const devId = generateDeterministicCameraId(null, device.name, device.xaddr, device.urn);
+      
+      // Determina URL RTSP inicial robusta com base no IP descoberto
+      const defaultRtspUrl = `rtsp://admin:10203040LW@${hostname}:554/live`;
+
       foundCameras.push({
         id: devId,
         tenantId: 'tenant_default',
         name: device.name || `Câmera ONVIF (${hostname})`,
-        location: `Portão Local (${hostname})`,
-        rtspUrl: `rtsp://admin:10203040LW@${hostname}:554/live`,
+        location: `Setor Local (${hostname})`,
+        rtspUrl: defaultRtspUrl,
         streamId: `stream_${devId}`,
         enabled: true,
         status: 'ONLINE',
@@ -707,7 +711,9 @@ function loadConfig() {
       console.error('[Config Error] Erro ao ler config.json, criando novo:', e);
     }
   }
-  return { cameras: [] };
+  return {
+    cameras: []
+  };
 }
 
 function saveConfig(cfg) {

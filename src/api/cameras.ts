@@ -42,6 +42,13 @@ export function getAgentBaseUrl() {
   if (window.electronAPI) {
     return 'http://127.0.0.1:8080';
   }
+  // Se estivermos no navegador web na nuvem (Cloud Run / AI Studio preview), 127.0.0.1:8080 não é acessível.
+  // Ignoramos detectedAgentBase se ele apontar para localhost/127.0.0.1 e retornamos '' para usar rotas relativas /api/...
+  const isCloudEnv = typeof window !== 'undefined' && !window.location.hostname.includes('127.0.0.1') && !window.location.hostname.includes('localhost');
+  if (isCloudEnv) {
+    return '';
+  }
+
   if (detectedAgentBase) {
     return detectedAgentBase;
   }
@@ -106,13 +113,35 @@ export async function checkHealth(): Promise<HealthStatus> {
     }
   }
 
-  // Lista de URLs para tentar auto-descoberta
+  // 1. Tenta PRIMEIRO a rota relativa /api/health (Express backend integrado no servidor web)
+  try {
+    const res = await apiFetch('/api/health');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.status === 'ok') {
+        logger.info('API', 'Backend integrado /api/health respondeu com sucesso', correlationId);
+        return {
+          online: true,
+          service: 'web-backend',
+          go2rtcOnline: true,
+          camerasCount: data.camerasCount || 0,
+          discoveryState: data.discoveryState || {
+            agentStatus: '🟢 ONLINE (BACKEND INTEGRADO)',
+            networkStatus: '🟢 REDE ATIVA',
+            discoveryStatus: '🟢 SISTEMA PRONTO'
+          }
+        };
+      }
+    }
+  } catch (err) {
+    // Ignora e tenta fallback local
+  }
+
+  // 2. Lista de URLs para tentar auto-descoberta local (Electron / Windows Local Agent)
   const searchUrls = [
     detectedAgentBase,
     'http://127.0.0.1:8080',
-    'http://localhost:8080',
-    'http://127.0.0.1:3000',
-    'http://localhost:3000'
+    'http://localhost:8080'
   ].filter(Boolean) as string[];
 
   // Tenta cada URL em sequência
@@ -120,7 +149,7 @@ export async function checkHealth(): Promise<HealthStatus> {
     try {
       logger.info('API', `Tentando detectar Agente Local em: ${baseUrl}`, correlationId);
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
 
       const localRes = await apiFetch(`${baseUrl}/api/health`, {
         method: 'GET',
@@ -150,37 +179,13 @@ export async function checkHealth(): Promise<HealthStatus> {
     }
   }
 
-  // Fallback final: tenta a rota relativa se nada mais funcionou
-  try {
-    const url = '/api/health';
-    const res = await apiFetch(url);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.status === 'ok') {
-        const isWindows = !!data.isWindowsAgent;
-        return {
-          online: isWindows,
-          service: isWindows ? 'windows-agent' : 'web-backend',
-          go2rtcOnline: isWindows,
-          camerasCount: 0,
-          error: isWindows ? undefined : 'Software Nexus Agent não detectado no Windows (porta 8080).',
-          discoveryState: data.discoveryState || {
-            agentStatus: '🔴 NÃO DETECTADO',
-            networkStatus: '🔴 OFFLINE',
-            discoveryStatus: '🔴 AGUARDANDO AGENTE WINDOWS'
-          }
-        };
-      }
-    }
-  } catch (err) {}
-
   return {
     online: false,
-    error: 'Windows Local Agent não detectado na porta 8080.',
+    error: 'Windows Local Agent / Backend não detectado.',
     discoveryState: {
       agentStatus: '🔴 NÃO DETECTADO',
       networkStatus: '🔴 OFFLINE',
-      discoveryStatus: '🔴 AGUARDANDO AGENTE WINDOWS'
+      discoveryStatus: '🔴 AGUARDANDO CONEXÃO'
     }
   };
 }

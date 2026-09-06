@@ -198,6 +198,24 @@ export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState,
     }
   };
 
+  const handleQuickAddLocal = async (ip: string, name: string, location: string) => {
+    try {
+      const res = await addCamera({
+        name,
+        location,
+        rtspUrl: `rtsp://admin:10203040LW@${ip}:554/live`,
+        resolution: '1920x1080',
+        ptzEnabled: true
+      });
+      if (res.success) {
+        onAdd(res.camera);
+        alert(`Câmera ${name} (${ip}) adicionada com sucesso!`);
+      }
+    } catch (err: any) {
+      alert('Erro ao adicionar câmera: ' + err.message);
+    }
+  };
+
   const handleAddAllDiscovered = async () => {
     if (discoveredList.length === 0) return;
     
@@ -377,6 +395,39 @@ export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState,
                     <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
                     <span>{isScanning ? 'Escaneando Rede...' : 'Iniciar Varredura'}</span>
                   </button>
+                </div>
+
+                {/* Quick Add Local Cameras Helper */}
+                <div className="bg-black/30 border border-white/10 p-3.5 flex flex-col gap-2">
+                  <span className="font-rajdhani font-bold text-xs text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Wifi className="w-3.5 h-3.5" /> Adição Rápida de Câmeras da Rede Local (192.168.1.x):
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddLocal('192.168.1.18', 'NVT (192.168.1.18)', 'Setor Patio / China')}
+                      className="p-2 bg-white/5 hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/40 text-left transition-all cursor-pointer"
+                    >
+                      <div className="font-orbitron text-xs text-cyan-300">NVT (.18)</div>
+                      <div className="text-[10px] font-mono text-zinc-400">192.168.1.18:554</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddLocal('192.168.1.15', 'iM7-M3M-5647 (192.168.1.15)', 'Setor Portaria / Brasil')}
+                      className="p-2 bg-white/5 hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/40 text-left transition-all cursor-pointer"
+                    >
+                      <div className="font-orbitron text-xs text-cyan-300">iM7 (.15)</div>
+                      <div className="text-[10px] font-mono text-zinc-400">192.168.1.15:554</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickAddLocal('192.168.1.13', 'iM6-3161 (192.168.1.13)', 'Setor Perimetral / Brasil')}
+                      className="p-2 bg-white/5 hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/40 text-left transition-all cursor-pointer"
+                    >
+                      <div className="font-orbitron text-xs text-cyan-300">iM6 (.13)</div>
+                      <div className="text-[10px] font-mono text-zinc-400">192.168.1.13:554</div>
+                    </button>
+                  </div>
                 </div>
 
                 {isScanning && (
