@@ -61,6 +61,12 @@ export interface HealthStatus {
   camerasCount?: number;
   error?: string;
   detectedUrl?: string;
+  discoveryState?: {
+    agentStatus: string;
+    networkStatus: string;
+    discoveryStatus: string;
+    logs?: any[];
+  };
 }
 
 /**
@@ -134,7 +140,8 @@ export async function checkHealth(): Promise<HealthStatus> {
             service: 'local-agent-cors',
             go2rtcOnline: true,
             camerasCount: 0,
-            detectedUrl: baseUrl
+            detectedUrl: baseUrl,
+            discoveryState: data.discoveryState
           };
         }
       }
@@ -154,7 +161,8 @@ export async function checkHealth(): Promise<HealthStatus> {
           online: true,
           service: 'web-backend',
           go2rtcOnline: true,
-          camerasCount: 0
+          camerasCount: 0,
+          discoveryState: data.discoveryState
         };
       }
     }

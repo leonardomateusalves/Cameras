@@ -381,7 +381,7 @@ export function CameraCard({
                   <AlertTriangle className="w-5 h-5 text-rose-500 animate-pulse" />
                   <div className="text-left">
                     <h2 className="text-rose-400 font-bold text-xs uppercase tracking-wider">
-                      {diagnostic?.videoCodec && !['H264', 'VP8', 'VP9', 'AV1'].includes(diagnostic.videoCodec.toUpperCase()) 
+                      {diagnostic?.videoCodec && !['H264', 'VP8', 'VP9', 'AV1', 'H265', 'HEVC'].includes(diagnostic.videoCodec.toUpperCase()) 
                         ? 'CODEC INCOMPATÍVEL' 
                         : 'STREAM RTSP OFFLINE'}
                     </h2>
@@ -417,8 +417,10 @@ export function CameraCard({
                     <span className="text-zinc-500">VIDEO CODEC:</span>
                     <span className="font-bold">
                       {diagnostic?.videoCodec 
-                        ? (['H264', 'VP8', 'VP9', 'AV1'].includes(diagnostic.videoCodec.toUpperCase()) 
-                            ? `🟢 ${diagnostic.videoCodec}` 
+                        ? (['H264', 'VP8', 'VP9', 'AV1', 'H265', 'HEVC'].includes(diagnostic.videoCodec.toUpperCase()) 
+                            ? (['H265', 'HEVC'].includes(diagnostic.videoCodec.toUpperCase()) 
+                                ? `🟡 ${diagnostic.videoCodec} (BETA)` 
+                                : `🟢 ${diagnostic.videoCodec}`)
                             : `🔴 ${diagnostic.videoCodec} (INCOMPATÍVEL)`)
                         : '🟡 NEGOCIANDO CODEC'}
                     </span>

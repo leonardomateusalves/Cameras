@@ -60,12 +60,13 @@ export function DiagnosticViewer({
 
       {/* Caixa preta de logs em tempo real do WebSocket */}
       <div className="cftv-terminal-logbox scrollbar-thin" id="cftv-terminal-log-viewport">
-        {logs.length === 0 ? (
+        {!logs || logs.length === 0 ? (
           <div className="cftv-terminal-empty-logs">
             Aguardando sinal do agente de descoberta profunda...
           </div>
         ) : (
           logs.map((log, index) => {
+            if (!log) return null;
             let prefixClass = 'cftv-log-default';
             if (log.prefix === 'NETWORK') prefixClass = 'cftv-log-network';
             if (log.prefix === 'ONVIF' || log.prefix === 'DISCOVERY') prefixClass = 'cftv-log-discovery';

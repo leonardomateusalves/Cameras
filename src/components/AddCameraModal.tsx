@@ -35,6 +35,7 @@ interface DiscoveredDevice {
   rtspUrl: string;
   resolution: string;
   ptz: boolean;
+  onvifSupported?: boolean;
 }
 
 export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState, onResetDiagnostic }: AddCameraModalProps) {
@@ -52,6 +53,7 @@ export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState,
   const [transport, setTransport] = useState<'tcp' | 'udp'>('tcp');
   const [ptzEnabled, setPtzEnabled] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [isAddingAll, setIsAddingAll] = useState(false);
 
   // Split fields for better UX
   const [user, setUser] = useState('');
@@ -150,8 +152,6 @@ export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState,
     }
   }, [user, password, host, port, path, showAdvanced, activeTab]);
 
-  if (!isOpen) return null;
-
   const handleStartScan = async () => {
     setIsScanning(true);
     setScanCompleted(false);
@@ -178,19 +178,53 @@ export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState,
     }
   };
 
+
   const handleLinkDiscovered = async (device: DiscoveredDevice) => {
     try {
       const res = await addCamera({
          name: device.name,
          location: `IP: ${device.ip}`,
-         rtspUrl: device.rtspUrl || `rtsp://${device.ip}:554/live`
+         rtspUrl: device.rtspUrl || `rtsp://${device.ip}:554/live`,
+         resolution: device.resolution,
+         ptzEnabled: device.onvifSupported ?? device.ptz
       });
       if (res.success) {
          onAdd(res.camera);
-         onClose();
+         // Não fechamos o modal para permitir adicionar outras
+         setDiscoveredList(prev => prev.filter(d => d.id !== device.id));
       }
     } catch (err: any) {
       alert('Erro ao vincular: ' + err.message);
+    }
+  };
+
+  const handleAddAllDiscovered = async () => {
+    if (discoveredList.length === 0) return;
+    
+    setIsAddingAll(true);
+    let addedCount = 0;
+    
+    try {
+      for (const device of discoveredList) {
+        const res = await addCamera({
+          name: device.name,
+          location: `IP: ${device.ip}`,
+          rtspUrl: device.rtspUrl || `rtsp://${device.ip}:554/live`,
+          resolution: device.resolution,
+          ptzEnabled: device.onvifSupported ?? device.ptz
+        });
+        if (res.success) {
+          onAdd(res.camera);
+          addedCount++;
+        }
+      }
+      setDiscoveredList([]);
+      alert(`${addedCount} câmeras foram adicionadas com sucesso!`);
+      onClose();
+    } catch (err: any) {
+      alert('Erro ao adicionar algumas câmeras: ' + err.message);
+    } finally {
+      setIsAddingAll(false);
     }
   };
 
@@ -265,6 +299,8 @@ export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState,
     setRtspUrl(url);
     parseUrlToFields(url);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div
@@ -360,9 +396,23 @@ export function AddCameraModal({ isOpen, onClose, onAdd, initialData, bootState,
 
                 {!isScanning && discoveredList.length > 0 && (
                   <div className="flex flex-col gap-2 max-h-[320px] overflow-y-auto pr-1">
-                    <span className="font-rajdhani font-bold text-xs text-zinc-400 uppercase tracking-wider">
-                      Dispositivos Encontrados ({discoveredList.length}):
-                    </span>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-rajdhani font-bold text-xs text-zinc-400 uppercase tracking-wider">
+                        Dispositivos Encontrados ({discoveredList.length}):
+                      </span>
+                      <button
+                        onClick={handleAddAllDiscovered}
+                        disabled={isAddingAll}
+                        className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 px-2 py-0.5 bg-emerald-500/5 hover:bg-emerald-500/10 transition-all flex items-center gap-1"
+                      >
+                        {isAddingAll ? 'Adicionando...' : (
+                          <>
+                            <ShieldCheck className="w-3 h-3" />
+                            Adicionar Todas
+                          </>
+                        )}
+                      </button>
+                    </div>
                     {discoveredList.map((dev) => (
                       <div
                         key={dev.id}

@@ -116,20 +116,22 @@ app.use((req, res, next) => {
 // Helper for generating deterministic Camera IDs prioritizing ONVIF device URN/UUID
 function generateDeterministicCameraId(rtspUrl, name, xaddr, urn) {
   let targetStr = '';
-  if (urn && typeof urn === 'string' && urn.trim().length > 0) {
-    // Prioridade 1: Identidade persistente única de hardware / URN ONVIF
-    targetStr = urn.trim().toLowerCase();
-  } else if (xaddr && typeof xaddr === 'string' && xaddr.trim().length > 0) {
-    // Prioridade 2: XAddr de serviço ONVIF
-    targetStr = xaddr.trim().toLowerCase();
-  } else if (rtspUrl && typeof rtspUrl === 'string') {
-    // Prioridade 3: URL RTSP sanitizada sem credenciais
+  
+  // Combina identificadores para garantir unicidade mesmo em clones chineses sem UUID único
+  const parts = [];
+  if (urn) parts.push(urn.trim().toLowerCase());
+  if (xaddr) parts.push(xaddr.trim().toLowerCase());
+  if (rtspUrl) {
     try {
       const parsed = new URL(rtspUrl);
-      targetStr = `${parsed.hostname}:${parsed.port || 554}${parsed.pathname}${parsed.search}`;
+      parts.push(`${parsed.hostname}:${parsed.port || 554}${parsed.pathname}`);
     } catch (e) {
-      targetStr = rtspUrl.replace(/\/\/[^:]+:[^@]+@/, '//');
+      parts.push(rtspUrl.replace(/\/\/[^:]+:[^@]+@/, '//'));
     }
+  }
+
+  if (parts.length > 0) {
+    targetStr = parts.join('|');
   } else {
     targetStr = name || 'camera_default';
   }
@@ -181,9 +183,11 @@ function initWebSocket(server) {
 
     // Send initial handshake state
     ws.send(JSON.stringify({
-      type: 'agent_status',
-      timestamp: new Date().toISOString(),
-      status: 'running'
+      type: 'agent_status_raw',
+      agentStatus: discoveryState.agentStatus,
+      networkStatus: discoveryState.networkStatus,
+      discoveryStatus: discoveryState.discoveryStatus,
+      timestamp: new Date().toISOString()
     }));
 
     ws.on('message', (message) => {
@@ -618,6 +622,11 @@ async function startAutomaticDiscoverySequence(customCorrelationId = '') {
       }
       if (addedAny) {
         saveConfig(cfg);
+        // Notifica o frontend para atualizar a lista de câmeras
+        broadcast({
+          type: 'camera_found',
+          message: `${foundCameras.length} novas câmeras adicionadas automaticamente.`
+        });
       }
 
       console.log(`[DISCOVERY] Total cameras: ${cfg.cameras.length}`);
@@ -728,7 +737,8 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     backend: true,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    discoveryState
   });
 });
 
@@ -1316,15 +1326,28 @@ function runRtspDiagnostic(rtspUrl, correlationId = 'RTSP-DIAG') {
 
 function checkWebRtcCodecSupport(videoCodec, audioCodec) {
   const supportedVideos = ['H264', 'VP8', 'VP9', 'AV1'];
-  const isVideoSupported = supportedVideos.includes(videoCodec.toUpperCase());
+  const maybeSupported = ['H265', 'HEVC'];
   
-  if (!isVideoSupported) {
+  const videoUpper = videoCodec.toUpperCase();
+  const isVideoSupported = supportedVideos.includes(videoUpper);
+  const isMaybeSupported = maybeSupported.includes(videoUpper);
+  
+  if (!isVideoSupported && !isMaybeSupported) {
     return {
       compatible: false,
       error: 'CODEC_MISMATCH',
-      message: `RTSP conectado, mas o codec anunciado pela câmera (${videoCodec}) não é compatível com o pipeline atual do Go2RTC.`
+      message: `RTSP conectado, mas o codec anunciado pela câmera (${videoCodec}) não é compatível com WebRTC nativo.`
     };
   }
+
+  if (isMaybeSupported) {
+    return {
+      compatible: true,
+      warning: true,
+      message: `Codec ${videoCodec} detectado. Este codec pode não funcionar em todos os navegadores. Recomenda-se usar H.264 para máxima compatibilidade.`
+    };
+  }
+
   return { compatible: true };
 }
 
@@ -1425,6 +1448,9 @@ app.post('/api/cameras/diagnose', async (req, res) => {
       });
     }
 
+    // Se houver aviso (ex: H265), passamos para o frontend
+    const warning = codecSupport.warning ? codecSupport.message : null;
+
     // Etapa 4: Registrar ou atualizar stream no Go2RTC
     if (streamId) {
       try {
@@ -1441,10 +1467,12 @@ app.post('/api/cameras/diagnose', async (req, res) => {
       success: true,
       stage: 'stream',
       status: 'ONLINE',
-      message: 'Conexão RTSP e codecs totalmente compatíveis com o Go2RTC',
+      message: warning || 'Conexão RTSP e codecs totalmente compatíveis com o Go2RTC',
       videoCodec: rtspResult.videoCodec,
       audioCodec: rtspResult.audioCodec,
-      transport: 'tcp'
+      transport: 'tcp',
+      warning: !!warning,
+      warningMsg: warning
     });
 
   } catch (err) {

@@ -49,6 +49,16 @@ export default function App() {
       setAgentOffline(false);
       setAgentError('');
 
+      if (health.discoveryState) {
+        setBootState(prev => ({
+          ...prev,
+          agentStatus: health.discoveryState.agentStatus,
+          networkStatus: health.discoveryState.networkStatus,
+          discoveryStatus: health.discoveryState.discoveryStatus,
+          logs: health.discoveryState.logs || []
+        }));
+      }
+
       const res = await fetchCameras();
       if (res && res.cameras) {
         setCameras(res.cameras);
@@ -300,6 +310,7 @@ export default function App() {
           cameraZooms={cameraZooms}
           agentOffline={agentOffline}
           agentError={agentError}
+          bootState={bootState}
           onRetryConnection={initAgentAndCameras}
           onFocusToggle={handleFocusToggle}
           onSnapshot={handleSnapshotCaptured}
@@ -310,18 +321,14 @@ export default function App() {
         />
       </div>
 
-      {/* Botão Flutuante (FAB) para Adicionar Câmera */}
-      {!agentOffline && (
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="cftv-btn-fab"
-          title="Adicionar / Vincular Nova Câmera"
-        >
-          <Plus className="w-6 h-6 stroke-[2.5]" />
-        </button>
+      {selectedPtzCam && (
+        <PtzModal
+          camera={selectedPtzCam}
+          isOpen={!!selectedPtzCam}
+          onClose={() => setSelectedPtzCam(null)}
+        />
       )}
 
-      {/* Modais de controle */}
       <AddCameraModal
         isOpen={isAddModalOpen}
         onClose={handleModalClose}
@@ -331,12 +338,15 @@ export default function App() {
         onResetDiagnostic={handleResetDiagnostic}
       />
 
-      {selectedPtzCam && (
-        <PtzModal
-          camera={selectedPtzCam}
-          isOpen={!!selectedPtzCam}
-          onClose={() => setSelectedPtzCam(null)}
-        />
+      {/* Botão Flutuante (FAB) para Adicionar Câmera */}
+      {!agentOffline && (
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="cftv-btn-fab"
+          title="Adicionar / Vincular Nova Câmera"
+        >
+          <Plus className="w-6 h-6 stroke-[2.5]" />
+        </button>
       )}
     </div>
   );
